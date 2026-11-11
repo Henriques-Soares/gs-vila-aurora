@@ -1,0 +1,5 @@
+[
+  {"id": "R-HOR-01", "tipo": "faixa", "dispositivo": "horta-reservatorio", "metrica": "nivel",
+   "min": 20.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Reservatório da horta abaixo de 20%"}
+]

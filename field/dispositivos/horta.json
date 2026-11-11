@@ -1,0 +1,7 @@
+{"dispositivos": [
+  {"cn": "horta-reservatorio", "modelo": "faixa", "metricas": [
+    {"nome": "nivel", "unidade": "%", "inicial": 68.0, "min": 45.0, "max": 90.0, "passo": 0.8}]},
+  {"cn": "horta-ambiente", "modelo": "faixa", "metricas": [
+    {"nome": "umidade", "unidade": "%", "inicial": 58.0, "min": 40.0, "max": 80.0, "passo": 1.2},
+    {"nome": "temperatura", "unidade": "°C", "inicial": 24.0, "min": 18.0, "max": 31.0, "passo": 0.4}]}
+]}

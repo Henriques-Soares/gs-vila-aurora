@@ -1,0 +1,14 @@
+# espaco;cn do dispositivo (um certificado X.509 por dispositivo — RT-04)
+centro;centro-energia
+centro;centro-fechadura
+escola;escola-reservatorio
+escola;escola-bomba
+escola;escola-qualidade-agua
+ubs;ubs-camara-fria
+ubs;ubs-fechadura
+ubs;ubs-energia
+horta;horta-reservatorio
+horta;horta-ambiente
+abrigo;abrigo-alagamento
+abrigo;abrigo-energia
+abrigo;abrigo-ar

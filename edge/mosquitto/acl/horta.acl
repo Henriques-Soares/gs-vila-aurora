@@ -1,0 +1,12 @@
+# ACL do broker da borda — espaço: horta
+# %u = CN do certificado do cliente (identidade única por dispositivo)
+
+# Agente de borda deste espaço: lê a telemetria, comanda atuadores e publica alarmes locais
+user agente-horta
+topic read dispositivos/+/telemetria
+topic write dispositivos/+/comando
+topic write borda/horta/alarme
+
+# Dispositivos: cada um só publica a PRÓPRIA telemetria e só lê os PRÓPRIOS comandos
+pattern write dispositivos/%u/telemetria
+pattern read dispositivos/%u/comando

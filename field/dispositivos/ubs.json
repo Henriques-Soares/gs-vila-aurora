@@ -1,0 +1,9 @@
+{"dispositivos": [
+  {"cn": "ubs-camara-fria", "modelo": "faixa", "metricas": [
+    {"nome": "temperatura", "unidade": "°C", "inicial": 5.0, "min": 3.5, "max": 6.5, "passo": 0.25,
+     "cenario": {"nome": "camara_fria_falha", "deriva": 0.6, "limite": 16.0}}]},
+  {"cn": "ubs-fechadura", "modelo": "fechadura", "probabilidade": 0.15},
+  {"cn": "ubs-energia", "modelo": "faixa", "metricas": [
+    {"nome": "bateria", "unidade": "%", "inicial": 82.0, "min": 60.0, "max": 100.0, "passo": 0.8},
+    {"nome": "consumo", "unidade": "kW", "inicial": 1.8, "min": 0.8, "max": 3.2, "passo": 0.15}]}
+]}

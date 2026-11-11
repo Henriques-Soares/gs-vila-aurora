@@ -1,0 +1,47 @@
+# Configuração da CA do projeto Vila Aurora (laboratório)
+[ ca ]
+default_ca = CA_vila_aurora
+
+[ CA_vila_aurora ]
+dir              = $ENV::PKI_CA_DIR
+database         = $dir/index.txt
+new_certs_dir    = $dir/emitidos
+serial           = $dir/serial
+crlnumber        = $dir/crlnumber
+certificate      = $dir/ca.crt
+private_key      = $dir/ca.key
+default_md       = sha256
+default_days     = 365
+default_crl_days = 30
+policy           = politica
+copy_extensions  = copy
+unique_subject   = no
+
+[ politica ]
+organizationName = optional
+commonName       = supplied
+
+[ req ]
+distinguished_name = dn
+prompt             = no
+
+[ dn ]
+
+[ ext_ca ]
+basicConstraints     = critical,CA:TRUE,pathlen:0
+keyUsage             = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+
+[ ext_servidor ]
+basicConstraints       = critical,CA:FALSE
+keyUsage               = critical,digitalSignature
+extendedKeyUsage       = serverAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid
+
+[ ext_cliente ]
+basicConstraints       = critical,CA:FALSE
+keyUsage               = critical,digitalSignature
+extendedKeyUsage       = clientAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid

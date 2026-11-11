@@ -1,0 +1,9 @@
+{"dispositivos": [
+  {"cn": "escola-bomba", "modelo": "bomba"},
+  {"cn": "escola-reservatorio", "modelo": "reservatorio", "bomba": "escola-bomba",
+   "inicial": 55.0, "consumo": 0.6, "enchimento": 2.2,
+   "cenario_vazamento": "vazamento", "vazamento": 2.4},
+  {"cn": "escola-qualidade-agua", "modelo": "faixa", "metricas": [
+    {"nome": "turbidez", "unidade": "NTU", "inicial": 0.8, "min": 0.2, "max": 1.6, "passo": 0.08},
+    {"nome": "cloro", "unidade": "mg/L", "inicial": 1.1, "min": 0.6, "max": 1.6, "passo": 0.05}]}
+]}

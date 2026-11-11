@@ -1,0 +1,7 @@
+{"dispositivos": [
+  {"cn": "centro-energia", "modelo": "faixa", "metricas": [
+    {"nome": "geracao_solar", "unidade": "kW", "inicial": 2.4, "min": 0.0, "max": 5.0, "passo": 0.3},
+    {"nome": "bateria", "unidade": "%", "inicial": 76.0, "min": 45.0, "max": 100.0, "passo": 0.8},
+    {"nome": "consumo", "unidade": "kW", "inicial": 1.6, "min": 0.5, "max": 3.8, "passo": 0.15}]},
+  {"cn": "centro-fechadura", "modelo": "fechadura", "probabilidade": 0.2}
+]}

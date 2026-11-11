@@ -1,0 +1,10 @@
+{"dispositivos": [
+  {"cn": "abrigo-alagamento", "modelo": "faixa", "metricas": [
+    {"nome": "nivel_agua", "unidade": "cm", "inicial": 0.5, "min": 0.0, "max": 2.0, "passo": 0.2,
+     "cenario": {"nome": "alagamento", "deriva": 1.5, "limite": 40.0}}]},
+  {"cn": "abrigo-energia", "modelo": "faixa", "metricas": [
+    {"nome": "bateria", "unidade": "%", "inicial": 88.0, "min": 65.0, "max": 100.0, "passo": 0.8},
+    {"nome": "consumo", "unidade": "kW", "inicial": 1.2, "min": 0.4, "max": 2.6, "passo": 0.12}]},
+  {"cn": "abrigo-ar", "modelo": "faixa", "metricas": [
+    {"nome": "co2", "unidade": "ppm", "inicial": 620.0, "min": 420.0, "max": 950.0, "passo": 25.0}]}
+]}

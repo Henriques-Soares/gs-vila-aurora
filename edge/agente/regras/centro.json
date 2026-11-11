@@ -1,0 +1,5 @@
+[
+  {"id": "R-CEN-01", "tipo": "faixa", "dispositivo": "centro-energia", "metrica": "bateria",
+   "min": 20.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Bateria do Centro Comunitário abaixo de 20%"}
+]

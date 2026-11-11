@@ -1,0 +1,297 @@
+# Rede Comunitária Vila Aurora — laboratório completo (FIAP Global Solution 2026.2)
+#
+#   1) docker compose run --rm setup        gera a PKI e os segredos locais (uma única vez)
+#   2) docker compose up -d --build         sobe campo, borda, nuvem e supervisão
+#
+# Camadas e segmentos de rede (RT-01 / RT-07):
+#   campo-<espaco>  rede isolada de cada espaço: dispositivos + broker + agente de borda
+#   wan             enlace borda <-> nuvem (substituído pelo túnel WireGuard na Fase 3)
+#   nuvem           serviços internos da nuvem (banco não é alcançável pela borda)
+#   operadores      único segmento com porta publicada (painel, só em 127.0.0.1)
+name: vila-aurora
+
+x-python-campo: &campo
+  build: ./field
+  image: vila-aurora/campo
+  restart: unless-stopped
+
+x-broker: &broker
+  image: eclipse-mosquitto:2.0
+  restart: unless-stopped
+
+x-agente: &agente
+  build: ./edge/agente
+  image: vila-aurora/agente-borda
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------- ferramentas
+  setup:
+    profiles: ["ferramentas"]
+    build: ./pki
+    image: vila-aurora/pki
+    volumes: ["./:/repo"]
+    entrypoint: ["bash", "/repo/pki/setup.sh"]
+
+  pki:
+    profiles: ["ferramentas"]
+    build: ./pki
+    image: vila-aurora/pki
+    volumes: ["./:/repo"]
+    entrypoint: ["bash", "/repo/pki/pki.sh"]
+
+  # ---------------------------------------------------------------- espaço: centro
+  campo-centro:
+    <<: *campo
+    environment:
+      ESPACO: centro
+      BROKER_HOST: borda-centro-broker
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/dispositivos/centro:/pki/dispositivos:ro
+    networks: [campo-centro]
+    depends_on: [borda-centro-broker]
+
+  borda-centro-broker:
+    <<: *broker
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./edge/mosquitto/acl/centro.acl:/mosquitto/config/acl:ro
+      - ./pki/out/publico:/mosquitto/pki:ro
+      - ./pki/out/bordas/centro/broker:/mosquitto/certs:ro
+      - broker-centro:/mosquitto/data
+    networks: [campo-centro]
+
+  borda-centro-agente:
+    <<: *agente
+    environment:
+      ESPACO: centro
+      BROKER_HOST: borda-centro-broker
+      INGEST_URL: https://nuvem-ingest:8443/ingest
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/bordas/centro/agente:/pki/agente:ro
+      - buffer-centro:/dados
+    networks: [campo-centro, wan]
+    depends_on: [borda-centro-broker]
+
+  # ---------------------------------------------------------------- espaço: escola
+  campo-escola:
+    <<: *campo
+    environment:
+      ESPACO: escola
+      BROKER_HOST: borda-escola-broker
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/dispositivos/escola:/pki/dispositivos:ro
+    networks: [campo-escola]
+    depends_on: [borda-escola-broker]
+
+  borda-escola-broker:
+    <<: *broker
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./edge/mosquitto/acl/escola.acl:/mosquitto/config/acl:ro
+      - ./pki/out/publico:/mosquitto/pki:ro
+      - ./pki/out/bordas/escola/broker:/mosquitto/certs:ro
+      - broker-escola:/mosquitto/data
+    networks: [campo-escola]
+
+  borda-escola-agente:
+    <<: *agente
+    environment:
+      ESPACO: escola
+      BROKER_HOST: borda-escola-broker
+      INGEST_URL: https://nuvem-ingest:8443/ingest
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/bordas/escola/agente:/pki/agente:ro
+      - buffer-escola:/dados
+    networks: [campo-escola, wan]
+    depends_on: [borda-escola-broker]
+
+  # ---------------------------------------------------------------- espaço: ubs
+  campo-ubs:
+    <<: *campo
+    environment:
+      ESPACO: ubs
+      BROKER_HOST: borda-ubs-broker
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/dispositivos/ubs:/pki/dispositivos:ro
+    networks: [campo-ubs]
+    depends_on: [borda-ubs-broker]
+
+  borda-ubs-broker:
+    <<: *broker
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./edge/mosquitto/acl/ubs.acl:/mosquitto/config/acl:ro
+      - ./pki/out/publico:/mosquitto/pki:ro
+      - ./pki/out/bordas/ubs/broker:/mosquitto/certs:ro
+      - broker-ubs:/mosquitto/data
+    networks: [campo-ubs]
+
+  borda-ubs-agente:
+    <<: *agente
+    environment:
+      ESPACO: ubs
+      BROKER_HOST: borda-ubs-broker
+      INGEST_URL: https://nuvem-ingest:8443/ingest
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/bordas/ubs/agente:/pki/agente:ro
+      - buffer-ubs:/dados
+    networks: [campo-ubs, wan]
+    depends_on: [borda-ubs-broker]
+
+  # ---------------------------------------------------------------- espaço: horta
+  campo-horta:
+    <<: *campo
+    environment:
+      ESPACO: horta
+      BROKER_HOST: borda-horta-broker
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/dispositivos/horta:/pki/dispositivos:ro
+    networks: [campo-horta]
+    depends_on: [borda-horta-broker]
+
+  borda-horta-broker:
+    <<: *broker
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./edge/mosquitto/acl/horta.acl:/mosquitto/config/acl:ro
+      - ./pki/out/publico:/mosquitto/pki:ro
+      - ./pki/out/bordas/horta/broker:/mosquitto/certs:ro
+      - broker-horta:/mosquitto/data
+    networks: [campo-horta]
+
+  borda-horta-agente:
+    <<: *agente
+    environment:
+      ESPACO: horta
+      BROKER_HOST: borda-horta-broker
+      INGEST_URL: https://nuvem-ingest:8443/ingest
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/bordas/horta/agente:/pki/agente:ro
+      - buffer-horta:/dados
+    networks: [campo-horta, wan]
+    depends_on: [borda-horta-broker]
+
+  # ---------------------------------------------------------------- espaço: abrigo
+  campo-abrigo:
+    <<: *campo
+    environment:
+      ESPACO: abrigo
+      BROKER_HOST: borda-abrigo-broker
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/dispositivos/abrigo:/pki/dispositivos:ro
+    networks: [campo-abrigo]
+    depends_on: [borda-abrigo-broker]
+
+  borda-abrigo-broker:
+    <<: *broker
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./edge/mosquitto/acl/abrigo.acl:/mosquitto/config/acl:ro
+      - ./pki/out/publico:/mosquitto/pki:ro
+      - ./pki/out/bordas/abrigo/broker:/mosquitto/certs:ro
+      - broker-abrigo:/mosquitto/data
+    networks: [campo-abrigo]
+
+  borda-abrigo-agente:
+    <<: *agente
+    environment:
+      ESPACO: abrigo
+      BROKER_HOST: borda-abrigo-broker
+      INGEST_URL: https://nuvem-ingest:8443/ingest
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/bordas/abrigo/agente:/pki/agente:ro
+      - buffer-abrigo:/dados
+    networks: [campo-abrigo, wan]
+    depends_on: [borda-abrigo-broker]
+
+  # ---------------------------------------------------------------- nuvem
+  nuvem-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vilaaurora
+    env_file:
+      - path: ./segredos/db.env
+        required: false
+    volumes:
+      - ./cloud/db:/docker-entrypoint-initdb.d:ro
+      - db:/var/lib/postgresql/data
+    networks: [nuvem]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vilaaurora"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nuvem-ingest:
+    build: ./cloud/ingest
+    image: vila-aurora/nuvem-ingest
+    restart: unless-stopped
+    env_file:
+      - path: ./segredos/ingest.env
+        required: false
+    volumes:
+      - ./pki/out/publico:/pki/publico:ro
+      - ./pki/out/nuvem/ingest:/pki/ingest:ro
+    networks: [wan, nuvem]
+    depends_on:
+      nuvem-db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- supervisão
+  painel:
+    build: ./painel
+    image: vila-aurora/painel
+    restart: unless-stopped
+    environment:
+      TZ: "<-03>3"   # horário de Brasília na exibição
+    env_file:
+      - path: ./segredos/painel.env
+        required: false
+    ports:
+      - "127.0.0.1:8080:8080"   # só a própria máquina acessa; nada exposto à rede
+    networks: [nuvem, operadores]
+    depends_on:
+      nuvem-db:
+        condition: service_healthy
+
+networks:
+  campo-centro:
+    internal: true
+  campo-escola:
+    internal: true
+  campo-ubs:
+    internal: true
+  campo-horta:
+    internal: true
+  campo-abrigo:
+    internal: true
+  wan:
+    internal: true
+  nuvem:
+    internal: true
+  operadores: {}
+
+volumes:
+  broker-centro:
+  buffer-centro:
+  broker-escola:
+  buffer-escola:
+  broker-ubs:
+  buffer-ubs:
+  broker-horta:
+  buffer-horta:
+  broker-abrigo:
+  buffer-abrigo:
+  db:

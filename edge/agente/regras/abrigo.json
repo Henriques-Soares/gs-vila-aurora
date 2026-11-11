@@ -1,0 +1,11 @@
+[
+  {"id": "R-ABR-01", "tipo": "faixa", "dispositivo": "abrigo-alagamento", "metrica": "nivel_agua",
+   "max": 10.0, "consecutivas": 3, "severidade": "critico",
+   "mensagem": "Alagamento detectado no abrigo (lâmina d'água acima de 10 cm)"},
+  {"id": "R-ABR-02", "tipo": "faixa", "dispositivo": "abrigo-energia", "metrica": "bateria",
+   "min": 25.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Bateria do abrigo abaixo de 25%"},
+  {"id": "R-ABR-03", "tipo": "faixa", "dispositivo": "abrigo-ar", "metrica": "co2",
+   "max": 1500.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Qualidade do ar ruim no abrigo (CO2 acima de 1500 ppm)"}
+]

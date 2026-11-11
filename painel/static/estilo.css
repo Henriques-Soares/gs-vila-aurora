@@ -1,0 +1,93 @@
+/* Painel Vila Aurora
+   Acessibilidade (WCAG 2.1 AA): contraste >= 4.5:1, foco visível, texto ampliável,
+   estado sempre escrito (nunca só por cor), navegação por teclado. */
+:root {
+  --fundo: #f3f5f7; --cartao: #ffffff; --texto: #17202e; --suave: #4a566b; --linha: #dfe4ea;
+  --marca: #0a4f45; --marca-2: #0e6b5c;
+  --ok: #0b6b34; --ok-fundo: #e6f4ec;
+  --atencao: #8a4b00; --atencao-fundo: #fdf0dc;
+  --critico: #a51414; --critico-fundo: #fbe9e9;
+  --neutro-fundo: #eceff3; --foco: #1d4ed8;
+  --sombra: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 12px rgba(16, 24, 40, .06);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.5;
+       color: var(--texto); background: var(--fundo); }
+h1, h2, h3, h4, p, dl, dd, ul { margin: 0; padding: 0; }
+ul { list-style: none; }
+a:focus-visible { outline: 3px solid var(--foco); outline-offset: 3px; border-radius: .4rem; }
+.pular { position: absolute; left: -999px; top: 0; background: #fff; color: var(--texto); padding: .75rem 1rem; }
+.pular:focus { left: .5rem; top: .5rem; z-index: 10; }
+.largura { width: min(100% - 2rem, 84rem); margin-inline: auto; }
+
+/* ---------- topo ---------- */
+.topo { background: linear-gradient(135deg, var(--marca), var(--marca-2)); color: #fff; padding: 1.5rem 0 4.25rem; }
+.topo-linha { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; justify-content: space-between; }
+.sobretitulo { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; opacity: .9; }
+.topo h1 { font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem); line-height: 1.2; margin: .15rem 0 .3rem; }
+.atualizado { font-size: .95rem; }
+.acoes { display: flex; flex-wrap: wrap; gap: .6rem; }
+.botao { display: inline-block; padding: .65rem 1.1rem; border-radius: .6rem; font-weight: 700; text-decoration: none;
+         background: #fff; color: var(--marca); border: 2px solid #fff; }
+.botao.contorno { background: transparent; color: #fff; }
+.botao:hover { text-decoration: underline; }
+.topo a:focus-visible { outline-color: #fff; }
+
+/* ---------- resumo ---------- */
+main { padding-bottom: 2rem; }
+.resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin-top: -2.75rem; }
+.indicador { background: var(--cartao); border-radius: .9rem; padding: 1.1rem 1.25rem; box-shadow: var(--sombra);
+             border-top: .35rem solid var(--suave); }
+.indicador.bom { border-top-color: var(--ok); }
+.indicador.atencao { border-top-color: var(--atencao); }
+.indicador.critico { border-top-color: var(--critico); }
+.numero { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.indicador.critico .numero { color: var(--critico); }
+.legenda { color: var(--suave); margin-top: .15rem; }
+
+h2 { font-size: 1.25rem; margin: 2rem 0 .85rem; }
+.faixa-erro { margin-top: 1rem; padding: .9rem 1rem; background: var(--critico-fundo); border-left: .4rem solid var(--critico);
+              border-radius: .5rem; font-weight: 600; }
+.vazio { background: var(--cartao); border: 1px dashed #b9c1cc; border-radius: .9rem; padding: 1rem 1.25rem; color: var(--suave); }
+
+/* ---------- avisos ---------- */
+.avisos { display: grid; gap: .6rem; }
+.aviso { display: flex; gap: .9rem; align-items: flex-start; background: var(--cartao); border-radius: .8rem;
+         padding: .85rem 1rem; box-shadow: var(--sombra); border-left: .4rem solid var(--suave); }
+.aviso.critico { border-left-color: var(--critico); }
+.aviso.alto { border-left-color: var(--atencao); }
+.aviso-msg { font-weight: 600; }
+.aviso-meta { color: var(--suave); font-size: .9rem; margin-top: .1rem; }
+.selo { flex: none; min-width: 6.25rem; text-align: center; padding: .2rem .6rem; border-radius: 1rem;
+        font-size: .85rem; font-weight: 700; color: #fff; background: var(--suave); }
+.selo.critico { background: var(--critico); }
+.selo.alto { background: var(--atencao); }
+
+/* ---------- espaços ---------- */
+.grade { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 21rem), 1fr)); align-items: start; }
+.cartao { background: var(--cartao); border-radius: .9rem; padding: 1.15rem 1.25rem 1.25rem; box-shadow: var(--sombra);
+          border-top: .35rem solid var(--ok); }
+.cartao.sem-conexao { border-top-color: var(--atencao); }
+.cartao.sem-dados { border-top-color: var(--suave); }
+.cartao-topo { display: flex; gap: .75rem; align-items: flex-start; justify-content: space-between; }
+h3 { font-size: 1.1rem; line-height: 1.3; }
+.estado { flex: none; padding: .15rem .65rem; border-radius: 1rem; font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.estado.ok { background: var(--ok-fundo); color: var(--ok); }
+.estado.sem-conexao { background: var(--atencao-fundo); color: var(--atencao); }
+.estado.sem-dados { background: var(--neutro-fundo); color: var(--suave); }
+.detalhe { color: var(--suave); font-size: .92rem; margin: .35rem 0 .2rem; }
+
+.equipamento { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--linha); }
+.equipamento-topo { display: flex; gap: .5rem; align-items: baseline; justify-content: space-between; }
+h4 { font-size: .8rem; letter-spacing: .05em; text-transform: uppercase; color: var(--suave); }
+.quando { font-size: .82rem; color: var(--suave); white-space: nowrap; }
+.medicao { display: flex; gap: 1rem; align-items: baseline; justify-content: space-between; padding: .28rem 0; }
+dt { color: var(--texto); }
+dd { font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+footer { padding: .5rem 0 2rem; color: var(--suave); font-size: .9rem; text-align: center; }
+
+@media (max-width: 30rem) {
+  .aviso { flex-direction: column; gap: .5rem; }
+  .selo { min-width: 0; }
+}

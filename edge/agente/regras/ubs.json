@@ -1,0 +1,8 @@
+[
+  {"id": "R-UBS-01", "tipo": "faixa", "dispositivo": "ubs-camara-fria", "metrica": "temperatura",
+   "min": 2.0, "max": 8.0, "consecutivas": 3, "severidade": "critico",
+   "mensagem": "Câmara fria de vacinas fora da faixa segura (2 a 8 °C)"},
+  {"id": "R-UBS-02", "tipo": "faixa", "dispositivo": "ubs-energia", "metrica": "bateria",
+   "min": 25.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Bateria da UBS abaixo de 25%"}
+]

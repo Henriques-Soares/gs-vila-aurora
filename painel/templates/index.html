@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if auto %}<meta http-equiv="refresh" content="15">{% endif %}
+  <title>Painel de Supervisão — Rede Comunitária Vila Aurora</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="topo">
+    <div class="largura topo-linha">
+      <div>
+        <p class="sobretitulo">Painel de supervisão</p>
+        <h1>Rede Comunitária Vila Aurora</h1>
+        <p class="atualizado">Atualizado em {{ agora }}</p>
+      </div>
+      <nav aria-label="Atualização da página" class="acoes">
+        <a class="botao" href="{{ url_for('inicio', auto=1 if auto else None) }}">Atualizar agora</a>
+        {% if auto %}
+          <a class="botao contorno" href="{{ url_for('inicio') }}">Parar atualização automática</a>
+        {% else %}
+          <a class="botao contorno" href="{{ url_for('inicio', auto=1) }}">Atualizar sozinho a cada 15 s</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo" class="largura">
+    {% if erro %}<p class="faixa-erro" role="alert">{{ erro }}</p>{% endif %}
+
+    {% if resumo %}
+    <section aria-label="Resumo" class="resumo">
+      <div class="indicador {{ 'bom' if resumo.conectados == resumo.total else 'atencao' }}">
+        <p class="numero">{{ resumo.conectados }} de {{ resumo.total }}</p>
+        <p class="legenda">espaços conectados à nuvem</p>
+      </div>
+      <div class="indicador {{ 'bom' if resumo.ativos == 0 else 'critico' }}">
+        <p class="numero">{{ resumo.ativos }}</p>
+        <p class="legenda">{{ 'aviso ativo' if resumo.ativos == 1 else 'avisos ativos' }} agora</p>
+      </div>
+      <div class="indicador neutro">
+        <p class="numero">{{ espacos | map(attribute='equipamentos') | map('length') | sum }}</p>
+        <p class="legenda">equipamentos monitorados</p>
+      </div>
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="t-alarmes">
+      <h2 id="t-alarmes">Avisos recentes</h2>
+      {% if alarmes %}
+      <ul class="avisos">
+        {% for a in alarmes %}
+        <li class="aviso {{ a.severidade }}">
+          <span class="selo {{ a.severidade }}">{{ a.rotulo }}</span>
+          <div class="aviso-texto">
+            <p class="aviso-msg">{{ a.mensagem }}</p>
+            <p class="aviso-meta">{{ a.espaco }} · {{ a.dispositivo }} · {{ a.quando }}</p>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="vazio">Nenhum aviso até agora. Está tudo dentro do esperado.</p>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="t-espacos">
+      <h2 id="t-espacos">Espaços comunitários</h2>
+      <div class="grade">
+      {% for e in espacos %}
+        <article class="cartao {{ e.situacao }}" aria-labelledby="e-{{ loop.index }}">
+          <div class="cartao-topo">
+            <h3 id="e-{{ loop.index }}">{{ e.nome }}</h3>
+            <span class="estado {{ e.situacao }}">{{ e.rotulo }}</span>
+          </div>
+          <p class="detalhe">{{ e.detalhe }}</p>
+          {% for eq in e.equipamentos %}
+          <div class="equipamento">
+            <div class="equipamento-topo">
+              <h4>{{ eq.nome }}</h4>
+              <span class="quando">medido {{ eq.quando }}</span>
+            </div>
+            <dl>
+              {% for m in eq.medicoes %}
+              <div class="medicao"><dt>{{ m.metrica }}</dt><dd>{{ m.valor }}</dd></div>
+              {% endfor %}
+            </dl>
+          </div>
+          {% endfor %}
+        </article>
+      {% endfor %}
+      </div>
+    </section>
+  </main>
+
+  <footer class="largura">
+    <p>Protótipo acadêmico · FIAP Global Solution 2026.2 · Todos os dados exibidos são sintéticos.</p>
+  </footer>
+</body>
+</html>

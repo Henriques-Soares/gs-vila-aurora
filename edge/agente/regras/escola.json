@@ -1,0 +1,14 @@
+[
+  {"id": "R-ESC-01", "tipo": "histerese", "dispositivo": "escola-reservatorio", "metrica": "nivel",
+   "atuador": "escola-bomba", "ligar_abaixo": 30.0, "desligar_acima": 85.0,
+   "max_ligado_s": 300, "descanso_s": 120, "reenvio_s": 10},
+  {"id": "R-ESC-02", "tipo": "faixa", "dispositivo": "escola-reservatorio", "metrica": "nivel",
+   "min": 15.0, "consecutivas": 3, "severidade": "critico",
+   "mensagem": "Reservatório da escola em nível crítico (abaixo de 15%)"},
+  {"id": "R-ESC-03", "tipo": "faixa", "dispositivo": "escola-qualidade-agua", "metrica": "cloro",
+   "min": 0.2, "max": 2.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Cloro residual fora da faixa (0,2 a 2,0 mg/L)"},
+  {"id": "R-ESC-04", "tipo": "faixa", "dispositivo": "escola-qualidade-agua", "metrica": "turbidez",
+   "max": 5.0, "consecutivas": 3, "severidade": "alto",
+   "mensagem": "Turbidez da água acima de 5 NTU"}
+]

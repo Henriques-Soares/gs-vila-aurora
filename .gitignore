@@ -1,0 +1,14 @@
+# Segredos e material criptográfico NUNCA são versionados
+pki/out/
+segredos/
+.env
+*.key
+*.pem
+
+# Dados locais
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.pytest_cache/
