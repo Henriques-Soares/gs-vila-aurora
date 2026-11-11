@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Minha conta{% endblock %}
+{% block conteudo %}
+  <div class="titulo-pagina"><div>
+    <h1>Minha conta</h1>
+    <p class="atualizado">Você entrou como <strong>{{ conta.nome }}</strong> ({{ conta.usuario }}), perfil <strong>{{ PERFIS[conta.perfil] }}</strong>. Verificação em duas etapas: <strong>ativa</strong>.</p>
+  </div></div>
+  <h2>O que cada perfil pode fazer</h2>
+  <div class="tabela-rolavel" tabindex="0" role="region" aria-label="Tabela de permissões por perfil">
+  <table class="tabela">
+    <thead><tr><th scope="col">Permissão</th>{% for chave, nome in PERFIS.items() %}<th scope="col" {% if chave == conta.perfil %}class="meu"{% endif %}>{{ nome }}{% if chave == conta.perfil %} (você){% endif %}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for linha in matriz %}
+      <tr><th scope="row">{{ linha.rotulo }}</th>
+      {% for chave in PERFIS %}<td {% if chave == conta.perfil %}class="meu"{% endif %}>{% if linha.perfis[chave] %}<span class="sim">Sim</span>{% else %}<span class="nao">Não</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endblock %}

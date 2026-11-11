@@ -195,9 +195,12 @@ def main() -> None:
         armazenamento = ArmazenamentoPostgres()
     except KeyError as exc:
         sys.exit(f"variável de ambiente obrigatória ausente: {exc}")
-    servidor = criar_servidor(("0.0.0.0", int(os.environ.get("PORTA", "8443"))),
+    # Em produção o serviço escuta SOMENTE no endereço do túnel WireGuard (ESCUTA=10.8.0.1):
+    # fora da VPN não existe porta aberta para a ingestão.
+    escuta = os.environ.get("ESCUTA", "0.0.0.0")
+    servidor = criar_servidor((escuta, int(os.environ.get("PORTA", "8443"))),
                               armazenamento, criar_contexto_tls(pki_pub, pki_ingest))
-    log("ingest_iniciado", porta=servidor.server_address[1], mtls=True, crl=True)
+    log("ingest_iniciado", escuta=escuta, porta=servidor.server_address[1], mtls=True, crl=True)
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

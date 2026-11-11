@@ -1,12 +1,13 @@
 # Rede Comunitária Vila Aurora — laboratório completo (FIAP Global Solution 2026.2)
 #
-#   1) docker compose run --rm setup        gera a PKI e os segredos locais (uma única vez)
-#   2) docker compose up -d --build         sobe campo, borda, nuvem e supervisão
+#   1) docker compose run --rm --build setup   gera PKI, segredos e chaves da VPN (só cria o que falta)
+#   2) docker compose up -d --build            sobe campo, borda, nuvem e supervisão
 #
-# Camadas e segmentos de rede (RT-01 / RT-07):
-#   campo-<espaco>  rede isolada de cada espaço: dispositivos + broker + agente de borda
-#   wan             enlace borda <-> nuvem (substituído pelo túnel WireGuard na Fase 3)
-#   nuvem           serviços internos da nuvem (banco não é alcançável pela borda)
+# Camadas e segmentos de rede (RT-01 / RT-06 / RT-07):
+#   campo-<espaco>  rede isolada de cada espaço: dispositivos + broker + nó de borda
+#   wan             enlace não confiável borda <-> nuvem: nele só trafega WireGuard (UDP 51820)
+#   túnel 10.8.0.0/24  VPN WireGuard: a ingestão da nuvem só escuta em 10.8.0.1
+#   nuvem           serviços internos da nuvem (banco inalcançável pela borda)
 #   operadores      único segmento com porta publicada (painel, só em 127.0.0.1)
 name: vila-aurora
 
@@ -24,6 +25,13 @@ x-agente: &agente
   image: vila-aurora/agente-borda
   restart: unless-stopped
 
+x-vpn: &vpn
+  build: ./vpn
+  image: vila-aurora/vpn
+  restart: unless-stopped
+  init: true
+  cap_add: [NET_ADMIN]   # necessário para criar a interface wg0 dentro do container
+
 services:
   # ---------------------------------------------------------------- ferramentas
   setup:
@@ -39,6 +47,20 @@ services:
     image: vila-aurora/pki
     volumes: ["./:/repo"]
     entrypoint: ["bash", "/repo/pki/pki.sh"]
+
+  admin:                  # contas do painel: migrar | semear | listar | criar | redefinir
+    profiles: ["ferramentas"]
+    build: ./painel
+    image: vila-aurora/painel
+    env_file:
+      - path: ./segredos/db.env
+        required: false
+    volumes: ["./cloud/db:/db:ro"]
+    networks: [nuvem]
+    entrypoint: ["python", "admin.py"]
+    depends_on:
+      nuvem-db:
+        condition: service_healthy
 
   # ---------------------------------------------------------------- espaço: centro
   campo-centro:
@@ -62,8 +84,20 @@ services:
       - broker-centro:/mosquitto/data
     networks: [campo-centro]
 
+  borda-centro-vpn:          # ponta do túnel WireGuard deste nó de borda
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.11/24
+    volumes:
+      - ./segredos/wg/centro:/wg:ro
+    extra_hosts:
+      - "nuvem-ingest:10.8.0.1"   # a ingestão só existe dentro do túnel
+    networks: [campo-centro, wan]
+    depends_on: [nuvem-vpn]
+
   borda-centro-agente:
     <<: *agente
+    network_mode: "service:borda-centro-vpn"   # usa a rede do nó de borda: fala com a nuvem só pelo túnel
     environment:
       ESPACO: centro
       BROKER_HOST: borda-centro-broker
@@ -72,8 +106,7 @@ services:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/bordas/centro/agente:/pki/agente:ro
       - buffer-centro:/dados
-    networks: [campo-centro, wan]
-    depends_on: [borda-centro-broker]
+    depends_on: [borda-centro-vpn, borda-centro-broker]
 
   # ---------------------------------------------------------------- espaço: escola
   campo-escola:
@@ -97,8 +130,20 @@ services:
       - broker-escola:/mosquitto/data
     networks: [campo-escola]
 
+  borda-escola-vpn:          # ponta do túnel WireGuard deste nó de borda
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.12/24
+    volumes:
+      - ./segredos/wg/escola:/wg:ro
+    extra_hosts:
+      - "nuvem-ingest:10.8.0.1"   # a ingestão só existe dentro do túnel
+    networks: [campo-escola, wan]
+    depends_on: [nuvem-vpn]
+
   borda-escola-agente:
     <<: *agente
+    network_mode: "service:borda-escola-vpn"   # usa a rede do nó de borda: fala com a nuvem só pelo túnel
     environment:
       ESPACO: escola
       BROKER_HOST: borda-escola-broker
@@ -107,8 +152,7 @@ services:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/bordas/escola/agente:/pki/agente:ro
       - buffer-escola:/dados
-    networks: [campo-escola, wan]
-    depends_on: [borda-escola-broker]
+    depends_on: [borda-escola-vpn, borda-escola-broker]
 
   # ---------------------------------------------------------------- espaço: ubs
   campo-ubs:
@@ -132,8 +176,20 @@ services:
       - broker-ubs:/mosquitto/data
     networks: [campo-ubs]
 
+  borda-ubs-vpn:          # ponta do túnel WireGuard deste nó de borda
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.13/24
+    volumes:
+      - ./segredos/wg/ubs:/wg:ro
+    extra_hosts:
+      - "nuvem-ingest:10.8.0.1"   # a ingestão só existe dentro do túnel
+    networks: [campo-ubs, wan]
+    depends_on: [nuvem-vpn]
+
   borda-ubs-agente:
     <<: *agente
+    network_mode: "service:borda-ubs-vpn"   # usa a rede do nó de borda: fala com a nuvem só pelo túnel
     environment:
       ESPACO: ubs
       BROKER_HOST: borda-ubs-broker
@@ -142,8 +198,7 @@ services:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/bordas/ubs/agente:/pki/agente:ro
       - buffer-ubs:/dados
-    networks: [campo-ubs, wan]
-    depends_on: [borda-ubs-broker]
+    depends_on: [borda-ubs-vpn, borda-ubs-broker]
 
   # ---------------------------------------------------------------- espaço: horta
   campo-horta:
@@ -167,8 +222,20 @@ services:
       - broker-horta:/mosquitto/data
     networks: [campo-horta]
 
+  borda-horta-vpn:          # ponta do túnel WireGuard deste nó de borda
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.14/24
+    volumes:
+      - ./segredos/wg/horta:/wg:ro
+    extra_hosts:
+      - "nuvem-ingest:10.8.0.1"   # a ingestão só existe dentro do túnel
+    networks: [campo-horta, wan]
+    depends_on: [nuvem-vpn]
+
   borda-horta-agente:
     <<: *agente
+    network_mode: "service:borda-horta-vpn"   # usa a rede do nó de borda: fala com a nuvem só pelo túnel
     environment:
       ESPACO: horta
       BROKER_HOST: borda-horta-broker
@@ -177,8 +244,7 @@ services:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/bordas/horta/agente:/pki/agente:ro
       - buffer-horta:/dados
-    networks: [campo-horta, wan]
-    depends_on: [borda-horta-broker]
+    depends_on: [borda-horta-vpn, borda-horta-broker]
 
   # ---------------------------------------------------------------- espaço: abrigo
   campo-abrigo:
@@ -202,8 +268,20 @@ services:
       - broker-abrigo:/mosquitto/data
     networks: [campo-abrigo]
 
+  borda-abrigo-vpn:          # ponta do túnel WireGuard deste nó de borda
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.15/24
+    volumes:
+      - ./segredos/wg/abrigo:/wg:ro
+    extra_hosts:
+      - "nuvem-ingest:10.8.0.1"   # a ingestão só existe dentro do túnel
+    networks: [campo-abrigo, wan]
+    depends_on: [nuvem-vpn]
+
   borda-abrigo-agente:
     <<: *agente
+    network_mode: "service:borda-abrigo-vpn"   # usa a rede do nó de borda: fala com a nuvem só pelo túnel
     environment:
       ESPACO: abrigo
       BROKER_HOST: borda-abrigo-broker
@@ -212,10 +290,24 @@ services:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/bordas/abrigo/agente:/pki/agente:ro
       - buffer-abrigo:/dados
-    networks: [campo-abrigo, wan]
-    depends_on: [borda-abrigo-broker]
+    depends_on: [borda-abrigo-vpn, borda-abrigo-broker]
 
   # ---------------------------------------------------------------- nuvem
+  nuvem-vpn:              # concentrador WireGuard: única porta da nuvem visível na wan (UDP 51820)
+    <<: *vpn
+    environment:
+      WG_ENDERECO: 10.8.0.1/24
+    volumes:
+      - ./segredos/wg/nuvem:/wg:ro
+    sysctls:
+      net.ipv4.ip_forward: 0   # sem roteamento: um nó de borda não alcança outro pelo túnel
+    networks: [wan, nuvem]
+    healthcheck:
+      test: ["CMD-SHELL", "ip -4 addr show wg0 | grep -q 10.8.0.1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   nuvem-db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -238,14 +330,18 @@ services:
     build: ./cloud/ingest
     image: vila-aurora/nuvem-ingest
     restart: unless-stopped
+    network_mode: "service:nuvem-vpn"   # mesma pilha de rede do concentrador
+    environment:
+      ESCUTA: 10.8.0.1                  # escuta somente no endereço do túnel
     env_file:
       - path: ./segredos/ingest.env
         required: false
     volumes:
       - ./pki/out/publico:/pki/publico:ro
       - ./pki/out/nuvem/ingest:/pki/ingest:ro
-    networks: [wan, nuvem]
     depends_on:
+      nuvem-vpn:
+        condition: service_healthy
       nuvem-db:
         condition: service_healthy
 

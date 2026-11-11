@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% block cabeca %}{% endblock %}
+  <title>{% block titulo %}Painel de Supervisão{% endblock %} — Rede Comunitária Vila Aurora</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="topo {% block topo_classe %}{% endblock %}">
+    <div class="largura topo-linha">
+      <div>
+        <p class="sobretitulo">Painel de supervisão</p>
+        <p class="marca">Rede Comunitária Vila Aurora</p>
+      </div>
+      {% if conta %}
+      <div class="sessao">
+        <p class="quem"><strong>{{ conta.nome }}</strong><span class="perfil">{{ PERFIS[conta.perfil] }}</span></p>
+        <form method="post" action="{{ url_for('sair') }}">
+          <input type="hidden" name="csrf" value="{{ csrf() }}">
+          <button class="botao contorno pequeno" type="submit">Sair</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% if conta %}
+    <nav class="largura menu" aria-label="Páginas do painel">
+      <a href="{{ url_for('inicio') }}" {% if request.endpoint == 'inicio' %}aria-current="page"{% endif %}>Visão geral</a>
+      {% if 'ver_comandos' in pode %}<a href="{{ url_for('comandos') }}" {% if request.endpoint == 'comandos' %}aria-current="page"{% endif %}>Comandos</a>{% endif %}
+      {% if 'ver_auditoria' in pode %}<a href="{{ url_for('auditoria') }}" {% if request.endpoint == 'auditoria' %}aria-current="page"{% endif %}>Auditoria</a>{% endif %}
+      <a href="{{ url_for('conta') }}" {% if request.endpoint == 'conta' %}aria-current="page"{% endif %}>Minha conta</a>
+    </nav>
+    {% endif %}
+  </header>
+
+  <main id="conteudo" class="largura">
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <footer class="largura">
+    <p>Protótipo acadêmico · FIAP Global Solution 2026.2 · Todos os dados exibidos são sintéticos.</p>
+  </footer>
+</body>
+</html>

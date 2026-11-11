@@ -1,34 +1,8 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  {% if auto %}<meta http-equiv="refresh" content="15">{% endif %}
-  <title>Painel de Supervisão — Rede Comunitária Vila Aurora</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
-</head>
-<body>
-  <a class="pular" href="#conteudo">Pular para o conteúdo</a>
-
-  <header class="topo">
-    <div class="largura topo-linha">
-      <div>
-        <p class="sobretitulo">Painel de supervisão</p>
-        <h1>Rede Comunitária Vila Aurora</h1>
-        <p class="atualizado">Atualizado em {{ agora }}</p>
-      </div>
-      <nav aria-label="Atualização da página" class="acoes">
-        <a class="botao" href="{{ url_for('inicio', auto=1 if auto else None) }}">Atualizar agora</a>
-        {% if auto %}
-          <a class="botao contorno" href="{{ url_for('inicio') }}">Parar atualização automática</a>
-        {% else %}
-          <a class="botao contorno" href="{{ url_for('inicio', auto=1) }}">Atualizar sozinho a cada 15 s</a>
-        {% endif %}
-      </nav>
-    </div>
-  </header>
-
-  <main id="conteudo" class="largura">
+{% extends "base.html" %}
+{% block cabeca %}{% if auto %}<meta http-equiv="refresh" content="15">{% endif %}{% endblock %}
+{% block titulo %}Visão geral{% endblock %}
+{% block topo_classe %}com-resumo{% endblock %}
+{% block conteudo %}
     {% if erro %}<p class="faixa-erro" role="alert">{{ erro }}</p>{% endif %}
 
     {% if resumo %}
@@ -47,6 +21,21 @@
       </div>
     </section>
     {% endif %}
+
+    <div class="titulo-pagina">
+      <div>
+        <h1>Visão geral</h1>
+        <p class="atualizado">Atualizado em {{ agora }}</p>
+      </div>
+      <div class="acoes">
+        <a class="botao escuro" href="{{ url_for('inicio', auto=1 if auto else None) }}">Atualizar agora</a>
+        {% if auto %}
+          <a class="botao claro" href="{{ url_for('inicio') }}">Parar atualização automática</a>
+        {% else %}
+          <a class="botao claro" href="{{ url_for('inicio', auto=1) }}">Atualizar sozinho a cada 15 s</a>
+        {% endif %}
+      </div>
+    </div>
 
     <section aria-labelledby="t-alarmes">
       <h2 id="t-alarmes">Avisos recentes</h2>
@@ -94,10 +83,4 @@
       {% endfor %}
       </div>
     </section>
-  </main>
-
-  <footer class="largura">
-    <p>Protótipo acadêmico · FIAP Global Solution 2026.2 · Todos os dados exibidos são sintéticos.</p>
-  </footer>
-</body>
-</html>
+{% endblock %}

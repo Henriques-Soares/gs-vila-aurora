@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Comandos{% endblock %}
+{% block conteudo %}
+  <div class="titulo-pagina"><div>
+    <h1>Comandos enviados aos equipamentos</h1>
+    <p class="atualizado">Os 50 mais recentes. Mostra quem decidiu cada acionamento (regra automática da borda ou pessoa).</p>
+  </div></div>
+  {% if linhas %}
+  <div class="tabela-rolavel" tabindex="0" role="region" aria-label="Tabela de comandos">
+  <table class="tabela">
+    <thead><tr><th scope="col">Quando</th><th scope="col">Local</th><th scope="col">Equipamento</th><th scope="col">Comando</th><th scope="col">Quem decidiu</th></tr></thead>
+    <tbody>
+    {% for l in linhas %}
+      <tr><td>{{ l.quando }}</td><td>{{ l.espaco }}</td><td>{{ l.dispositivo }}</td><td><strong>{{ l.acao }}</strong></td><td><code>{{ l.origem }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="vazio">Nenhum comando registrado até agora.</p>
+  {% endif %}
+{% endblock %}

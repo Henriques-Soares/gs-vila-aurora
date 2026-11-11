@@ -1,15 +1,54 @@
 """Painel de supervisão — Rede Comunitária Vila Aurora (versão corrigida).
 
-Nesta fase o painel é somente leitura. Ele acessa o banco com o papel `painel_ro`
-(apenas SELECT) e usa exclusivamente consultas parametrizadas.
-Login com MFA e perfis de acesso (RBAC) entram na Fase 3.
+Segurança de acesso (RT-09):
+  - senha (hash scrypt) + segundo fator TOTP obrigatório para todos os perfis;
+  - perfis de acesso (RBAC): operador, técnico, coordenação e auditor;
+  - bloqueio temporário após tentativas erradas, proteção CSRF, sessão com expiração,
+    trilha de auditoria de logins e acessos negados.
 """
+import hmac
 import os
-from datetime import datetime, timezone
+import re
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
+from functools import wraps
 
-from flask import Flask, render_template, request
+from flask import (Flask, abort, g, redirect, render_template, request, session, url_for)
+from werkzeug.exceptions import HTTPException
+from werkzeug.security import check_password_hash, generate_password_hash
+
+import totp
+from dados import Banco
 
 app = Flask(__name__)
+app.config.update(
+    SECRET_KEY=os.environ.get("PAINEL_CHAVE_SESSAO") or secrets.token_hex(32),
+    SESSION_COOKIE_NAME="va_sessao",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Strict",
+    # O laboratório publica o painel só em http://127.0.0.1. Atrás de HTTPS, defina PAINEL_COOKIE_SEGURO=1.
+    SESSION_COOKIE_SECURE=os.environ.get("PAINEL_COOKIE_SEGURO") == "1",
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),   # sessão expira após 30 min sem uso
+    MAX_CONTENT_LENGTH=16 * 1024,
+)
+
+banco = None   # criado sob demanda (os testes injetam um substituto)
+
+MAX_FALHAS = 5
+BLOQUEIO_MIN = 5
+VALIDADE_ETAPA_S = 300      # tempo para concluir o segundo fator depois da senha
+RE_USUARIO = re.compile(r"^[a-z0-9._-]{3,40}$")
+HASH_FALSO = generate_password_hash(secrets.token_hex(16))   # iguala o tempo de resposta de usuário inexistente
+
+PERFIS = {"operador": "Operador(a)", "tecnico": "Técnico(a)", "coordenacao": "Coordenação", "auditor": "Auditor(a)"}
+# Matriz de permissões (RBAC): cada perfil recebe só o que precisa para a sua função.
+PERMISSOES = {
+    "ver_painel":     {"rotulo": "Ver o painel e os avisos",                  "perfis": {"operador", "tecnico", "coordenacao", "auditor"}},
+    "ver_comandos":   {"rotulo": "Ver os comandos enviados aos equipamentos", "perfis": {"tecnico", "coordenacao", "auditor"}},
+    "ver_auditoria":  {"rotulo": "Ver o registro de acessos (auditoria)",     "perfis": {"coordenacao", "auditor"}},
+    "aprovar_acoes":  {"rotulo": "Aprovar ações de alto impacto",             "perfis": {"coordenacao"}},
+}
 
 ESPACOS = {
     "centro": "Centro Comunitário",
@@ -29,49 +68,186 @@ METRICAS = {
     "bateria": "Bateria", "consumo": "Consumo", "geracao_solar": "Geração solar", "nivel_agua": "Lâmina d'água",
 }
 SEVERIDADES = {"critico": "Crítico", "alto": "Atenção", "info": "Informativo"}
+ACOES = {"ligar": "Ligar", "desligar": "Desligar"}
 ATRASO_ALERTA_S = 60   # sem dados novos há mais que isso = borda sem conexão com a nuvem
 
-SQL_ULTIMAS = """
-    SELECT DISTINCT ON (espaco, dispositivo, metrica)
-           espaco, dispositivo, metrica, valor, unidade, ts
-      FROM leituras
-     WHERE ts > now() - make_interval(days => %(dias)s)
-     ORDER BY espaco, dispositivo, metrica, ts DESC"""
-SQL_SINCRONIA = "SELECT espaco, max(recebido_em) FROM leituras GROUP BY espaco"
-SQL_ALARMES = """
-    SELECT espaco, dispositivo, severidade, estado, mensagem, valor, ts
-      FROM alarmes ORDER BY ts DESC LIMIT %(limite)s"""
-SQL_ATIVOS = """
-    SELECT count(*) FROM (
-        SELECT DISTINCT ON (espaco, regra) estado
-          FROM alarmes ORDER BY espaco, regra, ts DESC) ultimo
-     WHERE estado = 'ativo'"""
+
+def bd() -> Banco:
+    global banco
+    if banco is None:
+        banco = Banco()
+    return banco
 
 
-def consultar() -> tuple[list, list, list, int]:
-    """Lê o banco com o papel somente-leitura. Todas as consultas são parametrizadas."""
-    import psycopg2
-    conexao = psycopg2.connect(
-        host=os.environ.get("DB_HOST", "nuvem-db"), port=int(os.environ.get("DB_PORTA", "5432")),
-        dbname=os.environ.get("DB_NOME", "vilaaurora"), user="painel_ro",
-        password=os.environ["PAINEL_DB_SENHA"], connect_timeout=5,
-        options="-c default_transaction_read_only=on -c statement_timeout=5000",
-    )
+# --------------------------------------------------------------------- utilidades
+def origem() -> str:
+    return (request.remote_addr or "?")[:45]
+
+
+def auditar(acao: str, resultado: str, detalhe: str | None = None, usuario=None, perfil=None) -> None:
+    conta = session.get("conta") or {}
     try:
-        with conexao, conexao.cursor() as cur:
-            cur.execute(SQL_ULTIMAS, {"dias": 7})
-            ultimas = cur.fetchall()
-            cur.execute(SQL_SINCRONIA)
-            sincronia = cur.fetchall()
-            cur.execute(SQL_ALARMES, {"limite": 15})
-            alarmes = cur.fetchall()
-            cur.execute(SQL_ATIVOS)
-            ativos = cur.fetchone()[0]
-    finally:
-        conexao.close()
-    return ultimas, sincronia, alarmes, ativos
+        bd().auditar(usuario or conta.get("usuario"), perfil or conta.get("perfil"), acao, resultado, detalhe, origem())
+    except Exception:
+        app.logger.exception("falha ao gravar auditoria")
 
 
+def token_csrf() -> str:
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(32)
+    return session["csrf"]
+
+
+@app.before_request
+def proteger_formularios():
+    """Todo POST precisa trazer o token CSRF da sessão."""
+    if request.method == "POST":
+        enviado = request.form.get("csrf", "")
+        if not hmac.compare_digest(enviado, session.get("csrf", "")) or not enviado:
+            abort(400)
+
+
+@app.context_processor
+def contexto_comum():
+    conta = session.get("conta")
+    pode = {p for p, d in PERMISSOES.items() if conta and conta["perfil"] in d["perfis"]}
+    return {"conta": conta, "pode": pode, "csrf": token_csrf, "PERFIS": PERFIS,
+            "agora": datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S")}
+
+
+def exige(permissao: str):
+    """Controle de acesso por perfil (RBAC), verificado no servidor a cada requisição."""
+    def decorador(funcao):
+        @wraps(funcao)
+        def protegida(*args, **kwargs):
+            conta = session.get("conta")
+            if not conta:
+                return redirect(url_for("entrar"))
+            if conta["perfil"] not in PERMISSOES[permissao]["perfis"]:
+                auditar("acesso_negado", "negado", f"{request.path} exige {permissao}")
+                abort(403)
+            return funcao(*args, **kwargs)
+        return protegida
+    return decorador
+
+
+def etapa_pendente() -> dict | None:
+    pendente = session.get("pendente")
+    if not pendente or time.time() - pendente["em"] > VALIDADE_ETAPA_S:
+        session.pop("pendente", None)
+        return None
+    return pendente
+
+
+def abrir_sessao(usuario: dict) -> None:
+    session.clear()                     # nova sessão a cada login (evita fixação de sessão)
+    session.permanent = True
+    session["conta"] = {"usuario": usuario["usuario"], "nome": usuario["nome"], "perfil": usuario["perfil"]}
+
+
+# ------------------------------------------------------------------- autenticação
+@app.route("/entrar", methods=["GET", "POST"])
+def entrar():
+    if session.get("conta"):
+        return redirect(url_for("inicio"))
+    erro = None
+    if request.method == "POST":
+        nome = request.form.get("usuario", "").strip().lower()
+        senha = request.form.get("senha", "")
+        usuario = bd().usuario(nome) if RE_USUARIO.match(nome) else None
+        bloqueado = bool(usuario and bloqueada(usuario))
+        senha_ok = check_password_hash(usuario["senha_hash"] if usuario else HASH_FALSO, senha)
+        if usuario and usuario["ativo"] and not bloqueado and senha_ok:
+            session.clear()
+            session["pendente"] = {"usuario": usuario["usuario"], "em": time.time()}
+            return redirect(url_for("verificar" if usuario["totp_ativo"] else "configurar_mfa"))
+        if usuario and not bloqueado:
+            bd().registrar_falha(usuario["usuario"], MAX_FALHAS, BLOQUEIO_MIN)
+        auditar("login", "bloqueado" if bloqueado else "falha", "senha", usuario=nome[:40] or None)
+        # Mesma mensagem para usuário inexistente, senha errada ou conta bloqueada:
+        # não revela quais contas existem.
+        erro = (f"Usuário ou senha incorretos. Depois de {MAX_FALHAS} tentativas erradas, "
+                f"a conta fica bloqueada por {BLOQUEIO_MIN} minutos.")
+    return render_template("entrar.html", erro=erro), (401 if erro else 200)
+
+
+MSG_BLOQUEIO = ("Conta bloqueada por alguns minutos por excesso de tentativas erradas. "
+                "Aguarde e tente de novo, ou peça à coordenação para redefinir o acesso.")
+
+
+def bloqueada(usuario: dict) -> bool:
+    return bool(usuario["bloqueado_ate"] and usuario["bloqueado_ate"] > datetime.now(timezone.utc))
+
+
+def _segundo_fator(usuario: dict, acao_auditoria: str) -> tuple[int | None, str | None]:
+    """Confere o código TOTP enviado. Devolve (passo aceito, mensagem de erro)."""
+    if bloqueada(usuario):      # senha já conferida nesta etapa: pode-se dizer que está bloqueada
+        return None, MSG_BLOQUEIO
+    passo = totp.verificar(usuario["totp_segredo"], request.form.get("codigo", ""), usuario["totp_ultimo_passo"])
+    if passo is None:
+        bd().registrar_falha(usuario["usuario"], MAX_FALHAS, BLOQUEIO_MIN)
+        auditar(acao_auditoria, "falha", "código TOTP", usuario=usuario["usuario"], perfil=usuario["perfil"])
+        return None, ("Código incorreto ou já utilizado. Confira se o código é o da conta "
+                      f"“{usuario['usuario']}” no aplicativo e digite o que aparece agora.")
+    return passo, None
+
+
+@app.route("/verificar", methods=["GET", "POST"])
+def verificar():
+    pendente = etapa_pendente()
+    usuario = bd().usuario(pendente["usuario"]) if pendente else None
+    if not usuario or not usuario["totp_ativo"]:
+        return redirect(url_for("entrar"))
+    erro = None
+    if request.method == "POST":
+        passo, erro = _segundo_fator(usuario, "login")
+        if passo is not None:
+            bd().concluir_login(usuario["usuario"], passo)
+            abrir_sessao(usuario)
+            auditar("login", "sucesso", "senha + TOTP")
+            return redirect(url_for("inicio"))
+    return render_template("verificar.html", erro=erro), (401 if erro else 200)
+
+
+@app.route("/mfa/configurar", methods=["GET", "POST"])
+def configurar_mfa():
+    """Primeiro acesso: cadastro obrigatório do segundo fator antes de entrar no painel."""
+    pendente = etapa_pendente()
+    usuario = bd().usuario(pendente["usuario"]) if pendente else None
+    if not usuario or usuario["totp_ativo"]:
+        return redirect(url_for("entrar"))
+    erro = None
+    if request.method == "POST" and usuario["totp_segredo"]:
+        passo, erro = _segundo_fator(usuario, "mfa_cadastro")
+        if passo is not None:
+            bd().concluir_login(usuario["usuario"], passo)
+            abrir_sessao(usuario)
+            auditar("mfa_cadastrado", "sucesso")
+            auditar("login", "sucesso", "senha + TOTP")
+            return redirect(url_for("inicio"))
+    if not usuario["totp_segredo"]:
+        usuario["totp_segredo"] = totp.gerar_segredo()
+        bd().salvar_segredo(usuario["usuario"], usuario["totp_segredo"])
+    segredo = usuario["totp_segredo"]
+    endereco = totp.uri(segredo, usuario["usuario"])
+    try:
+        import segno
+        qr = segno.make(endereco, error="m").svg_inline(scale=5, border=2, dark="#17202e")
+    except Exception:           # sem a biblioteca de QR, o cadastro manual continua funcionando
+        qr = None
+    chave = " ".join(segredo[i:i + 4] for i in range(0, len(segredo), 4))
+    return render_template("mfa_configurar.html", erro=erro, qr=qr, chave=chave,
+                           usuario=usuario["usuario"]), (401 if erro else 200)
+
+
+@app.post("/sair")
+def sair():
+    auditar("logout", "sucesso")
+    session.clear()
+    return redirect(url_for("entrar"))
+
+
+# --------------------------------------------------------------------- supervisão
 def nome_dispositivo(cn: str) -> str:
     sufixo = cn.split("-", 1)[1] if "-" in cn else cn
     return DISPOSITIVOS.get(sufixo, cn)
@@ -93,6 +269,10 @@ def ha_quanto(instante: datetime, agora: datetime) -> str:
     if s < 3600:
         return f"há {s // 60} min"
     return f"há {s // 3600} h"
+
+
+def hora_local(instante: datetime) -> str:
+    return instante.astimezone().strftime("%d/%m às %H:%M:%S")
 
 
 def montar(ultimas, sincronia, alarmes, ativos: int, agora: datetime) -> dict:
@@ -125,8 +305,7 @@ def montar(ultimas, sincronia, alarmes, ativos: int, agora: datetime) -> dict:
                         "equipamentos": list(equipamentos.values())})
     lista_alarmes = [
         {"espaco": ESPACOS.get(e, e), "dispositivo": nome_dispositivo(d), "severidade": sev,
-         "rotulo": SEVERIDADES.get(sev, sev), "estado": est, "mensagem": msg,
-         "quando": ts.astimezone().strftime("%d/%m às %H:%M:%S")}
+         "rotulo": SEVERIDADES.get(sev, sev), "estado": est, "mensagem": msg, "quando": hora_local(ts)}
         for e, d, sev, est, msg, _valor, ts in alarmes
     ]
     resumo = {"conectados": sum(1 for e in espacos if e["situacao"] == "ok"), "total": len(espacos),
@@ -134,9 +313,59 @@ def montar(ultimas, sincronia, alarmes, ativos: int, agora: datetime) -> dict:
     return {"espacos": espacos, "alarmes": lista_alarmes, "resumo": resumo}
 
 
+@app.get("/")
+@exige("ver_painel")
+def inicio():
+    auto = request.args.get("auto") == "1"
+    try:
+        dados = montar(*bd().painel(), datetime.now(timezone.utc))
+        erro = None
+    except Exception:
+        app.logger.exception("falha ao consultar o banco")
+        dados = {"espacos": [], "alarmes": [], "resumo": None}
+        erro = "Não foi possível carregar os dados agora. Tente novamente em instantes."
+    return render_template("index.html", auto=auto, erro=erro, **dados)
+
+
+@app.get("/comandos")
+@exige("ver_comandos")
+def comandos():
+    linhas = [
+        {"quando": hora_local(ts), "espaco": ESPACOS.get(e, e), "dispositivo": nome_dispositivo(d),
+         "acao": ACOES.get(acao, acao), "origem": origem_cmd}
+        for ts, e, d, acao, origem_cmd in bd().comandos()
+    ]
+    return render_template("comandos.html", linhas=linhas)
+
+
+@app.get("/auditoria")
+@exige("ver_auditoria")
+def auditoria():
+    linhas = [
+        {"quando": hora_local(ts), "usuario": u or "—", "perfil": PERFIS.get(p, p or "—"), "acao": acao,
+         "resultado": resultado, "detalhe": detalhe or "", "origem": origem_ip or ""}
+        for ts, u, p, acao, resultado, detalhe, origem_ip in bd().auditoria()
+    ]
+    return render_template("auditoria.html", linhas=linhas)
+
+
+@app.get("/conta")
+@exige("ver_painel")
+def conta():
+    matriz = [{"rotulo": d["rotulo"], "perfis": {p: p in d["perfis"] for p in PERFIS}} for d in PERMISSOES.values()]
+    return render_template("conta.html", matriz=matriz)
+
+
+@app.get("/saude")
+def saude():
+    return {"ok": True}
+
+
+# ------------------------------------------------------------- respostas e erros
 @app.after_request
 def cabecalhos_de_seguranca(resposta):
-    resposta.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+    resposta.headers["Content-Security-Policy"] = (
+        "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     resposta.headers["X-Content-Type-Options"] = "nosniff"
     resposta.headers["X-Frame-Options"] = "DENY"
     resposta.headers["Referrer-Policy"] = "no-referrer"
@@ -144,20 +373,28 @@ def cabecalhos_de_seguranca(resposta):
     return resposta
 
 
-@app.get("/")
-def inicio():
-    auto = request.args.get("auto") == "1"
-    try:
-        dados = montar(*consultar(), datetime.now(timezone.utc))
-        erro = None
-    except Exception:
-        app.logger.exception("falha ao consultar o banco")
-        dados = {"espacos": [], "alarmes": [], "resumo": None}
-        erro = "Não foi possível carregar os dados agora. Tente novamente em instantes."
-    return render_template("index.html", auto=auto, erro=erro,
-                           agora=datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S"), **dados)
+MENSAGENS = {
+    400: ("Pedido inválido", "A página ficou aberta por muito tempo ou o pedido veio incompleto. Volte e tente de novo."),
+    403: ("Acesso não permitido", "O seu perfil não tem permissão para ver esta página. Se precisar desse acesso, fale com a coordenação."),
+    404: ("Página não encontrada", "O endereço digitado não existe neste painel."),
+    413: ("Pedido grande demais", "O pedido enviado é maior do que o permitido."),
+}
 
 
-@app.get("/saude")
-def saude():
-    return {"ok": True}
+@app.errorhandler(400)
+@app.errorhandler(403)
+@app.errorhandler(404)
+@app.errorhandler(413)
+def erro_conhecido(exc):
+    titulo, texto = MENSAGENS[exc.code]
+    return render_template("erro.html", titulo=titulo, texto=texto), exc.code
+
+
+@app.errorhandler(Exception)
+def erro_inesperado(exc):
+    if isinstance(exc, HTTPException):
+        return render_template("erro.html", titulo="Pedido não atendido",
+                               texto="Não foi possível atender este pedido."), exc.code
+    app.logger.exception("erro inesperado")   # o detalhe fica só no log do servidor
+    return render_template("erro.html", titulo="Algo deu errado",
+                           texto="Não foi possível concluir o pedido. Tente novamente em instantes."), 500

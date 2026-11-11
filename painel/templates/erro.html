@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+  <section class="caixa-acesso" aria-labelledby="t-erro">
+    <h1 id="t-erro">{{ titulo }}</h1>
+    <p class="ajuda">{{ texto }}</p>
+    <p><a class="botao escuro" href="{{ url_for('inicio') }}">Voltar ao painel</a></p>
+  </section>
+{% endblock %}
