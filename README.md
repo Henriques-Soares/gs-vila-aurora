@@ -123,7 +123,13 @@ quatro regras de detecção, cada uma ligada a uma falha do incidente INC-VA-071
 
 **Resposta (RT-15).** O de baixo risco é automático: a origem ofensora entra em quarentena e o
 alerta é registrado. O de alto impacto — mexer num atuador, revogar um certificado — o SIEM
-**nunca** executa sozinho: cria uma ação pendente que só a **coordenação** aprova no painel.
+**nunca** executa sozinho: cria uma ação pendente que só a **coordenação** aprova ou recusa na
+página **Segurança** do painel. Cada ação é decidida uma única vez, com quem e quando, e a decisão
+vai para a trilha de auditoria. Técnico e auditor acompanham, mas não decidem.
+
+Por desenho, a nuvem não tem canal para comandar atuadores (a borda só envia dados para a nuvem):
+mesmo quem comprometesse a nuvem não conseguiria ligar ou desligar uma bomba. A ação aprovada é
+executada no local pelo técnico.
 
 Para demonstrar as regras A, B e C sem nenhum ataque real, há um harness de teste controlado que
 injeta eventos representativos na coleta:

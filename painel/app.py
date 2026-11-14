@@ -48,6 +48,7 @@ PERMISSOES = {
     "ver_painel":     {"rotulo": "Ver o painel e os avisos",                  "perfis": {"operador", "tecnico", "coordenacao", "auditor"}},
     "ver_comandos":   {"rotulo": "Ver os comandos enviados aos equipamentos", "perfis": {"tecnico", "coordenacao", "auditor"}},
     "ver_auditoria":  {"rotulo": "Ver o registro de acessos (auditoria)",     "perfis": {"coordenacao", "auditor"}},
+    "ver_seguranca":  {"rotulo": "Ver os alertas de segurança (SIEM)",        "perfis": {"tecnico", "coordenacao", "auditor"}},
     "aprovar_acoes":  {"rotulo": "Aprovar ações de alto impacto",             "perfis": {"coordenacao"}},
 }
 
@@ -412,6 +413,63 @@ def auditoria():
         for ts, u, p, acao, resultado, detalhe, origem_ip in bd().auditoria()
     ]
     return render_template("auditoria.html", linhas=linhas)
+
+
+SEVERIDADES_SEG = {"critica": ("Crítica", "critico"), "alta": ("Alta", "alto"),
+                   "media": ("Média", "info"), "baixa": ("Baixa", "info")}
+REGRAS_SEG = {
+    "A-acesso-nao-autorizado": "A · Acesso não autorizado repetido",
+    "B-sql-injection": "B · Tentativa de SQL Injection",
+    "C-credencial-invalida": "C · Credencial sem certificado válido",
+    "D-comando-suspeito": "D · Comando de atuador fora do perfil",
+}
+ACOES_SEG = {"colocar_atuador_em_modo_seguro": "Colocar o atuador em modo seguro"}
+STATUS_SEG = {"pendente": "Aguardando decisão", "aprovada": "Aprovada", "recusada": "Recusada"}
+
+
+@app.get("/seguranca")
+@exige("ver_seguranca")
+def seguranca():
+    alertas, acoes, quarentena = bd().seguranca()
+    lista_alertas = [
+        {"quando": hora_local(ts), "regra": REGRAS_SEG.get(regra, regra),
+         "rotulo": SEVERIDADES_SEG.get(sev, (sev, "info"))[0], "classe": SEVERIDADES_SEG.get(sev, (sev, "info"))[1],
+         "titulo": titulo, "detalhe": detalhe or "", "origem": orig or "—", "tecnica": tecnica or "—",
+         "resposta": resposta}
+        for ts, regra, sev, titulo, detalhe, orig, tecnica, resposta in alertas
+    ]
+    lista_acoes = [
+        {"id": aid, "quando": hora_local(criada), "acao": ACOES_SEG.get(acao, acao), "alvo": nome_dispositivo(alvo),
+         "alvo_cn": alvo, "motivo": motivo, "rotulo": SEVERIDADES_SEG.get(sev, (sev, "info"))[0],
+         "classe": SEVERIDADES_SEG.get(sev, (sev, "info"))[1], "status": status,
+         "status_rotulo": STATUS_SEG.get(status, status),
+         "decisao": f"{decidida_por} · {hora_local(decidida_em)}" if decidida_em else ""}
+        for aid, criada, acao, alvo, motivo, sev, status, decidida_em, decidida_por in acoes
+    ]
+    lista_quarentena = [{"origem": o, "desde": hora_local(desde), "regra": REGRAS_SEG.get(r, r), "motivo": m}
+                        for o, desde, r, m in quarentena]
+    pendentes = sum(1 for a in lista_acoes if a["status"] == "pendente")
+    return render_template("seguranca.html", alertas=lista_alertas, acoes=lista_acoes,
+                           quarentena=lista_quarentena, pendentes=pendentes,
+                           aviso=request.args.get("aviso"))
+
+
+@app.post("/seguranca/acoes/<int:acao_id>")
+@exige("aprovar_acoes")
+def decidir_acao(acao_id: int):
+    """Decisão humana sobre uma ação de alto impacto (RT-15). Só a coordenação chega aqui."""
+    decisao = request.form.get("decisao")
+    if decisao not in ("aprovar", "recusar"):
+        abort(400)
+    status = "aprovada" if decisao == "aprovar" else "recusada"
+    usuario = session["conta"]["usuario"]
+    resultado = bd().decidir_acao(acao_id, status, usuario)
+    if resultado is None:
+        auditar("acao_seg_decidida", "ignorada", f"ação #{acao_id} já não estava pendente")
+        return redirect(url_for("seguranca", aviso="ja-decidida"))
+    acao, alvo = resultado
+    auditar("acao_seg_decidida", status, f"ação #{acao_id}: {acao} em {alvo}")
+    return redirect(url_for("seguranca", aviso=status))
 
 
 @app.get("/conta")

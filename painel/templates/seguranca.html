@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block titulo %}Segurança{% endblock %}
+{% block conteudo %}
+  <div class="titulo-pagina"><div>
+    <h1>Segurança (SIEM)</h1>
+    <p class="atualizado">Alertas das regras de detecção, contenções automáticas e ações de alto impacto.
+      O sistema nunca executa sozinho uma ação de alto impacto: ela espera a decisão da coordenação.</p>
+  </div></div>
+
+  {% if aviso == 'aprovada' %}<p class="faixa-ok" role="status">Ação aprovada e registrada na auditoria.</p>
+  {% elif aviso == 'recusada' %}<p class="faixa-ok" role="status">Ação recusada e registrada na auditoria.</p>
+  {% elif aviso == 'ja-decidida' %}<p class="faixa-erro" role="alert">Essa ação já tinha sido decidida por outra pessoa. Nada foi alterado.</p>{% endif %}
+
+  <section class="resumo resumo-claro" aria-label="Resumo de segurança">
+    <div class="indicador {{ 'critico' if pendentes else 'bom' }}">
+      <p class="numero">{{ pendentes }}</p>
+      <p class="legenda">{{ 'ação aguardando decisão' if pendentes == 1 else 'ações aguardando decisão' }}</p>
+    </div>
+    <div class="indicador {{ 'atencao' if alertas else 'bom' }}">
+      <p class="numero">{{ alertas | length }}</p>
+      <p class="legenda">alertas recentes</p>
+    </div>
+    <div class="indicador {{ 'atencao' if quarentena else 'bom' }}">
+      <p class="numero">{{ quarentena | length }}</p>
+      <p class="legenda">{{ 'origem em quarentena' if quarentena | length == 1 else 'origens em quarentena' }}</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="t-acoes">
+    <h2 id="t-acoes">Ações de alto impacto</h2>
+    {% if acoes %}
+    <ul class="avisos">
+      {% for a in acoes %}
+      <li class="aviso {{ a.classe if a.status == 'pendente' else 'info' }}">
+        <span class="selo {{ a.classe if a.status == 'pendente' else 'info' }}">{{ a.status_rotulo }}</span>
+        <div class="aviso-texto">
+          <p class="aviso-msg">{{ a.acao }}: {{ a.alvo }} <span class="cn">({{ a.alvo_cn }})</span></p>
+          <p class="aviso-meta">{{ a.motivo }} · severidade {{ a.rotulo }} · criada em {{ a.quando }}{% if a.decisao %} · decidida por {{ a.decisao }}{% endif %}</p>
+          {% if a.status == 'pendente' and 'aprovar_acoes' in pode %}
+          <form method="post" action="{{ url_for('decidir_acao', acao_id=a.id) }}" class="decisao">
+            <input type="hidden" name="csrf" value="{{ csrf() }}">
+            <button class="botao escuro pequeno" type="submit" name="decisao" value="aprovar">Aprovar</button>
+            <button class="botao claro pequeno" type="submit" name="decisao" value="recusar">Recusar</button>
+          </form>
+          {% elif a.status == 'pendente' %}
+          <p class="aviso-meta"><strong>Somente a coordenação pode decidir esta ação.</strong></p>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="vazio">Nenhuma ação de alto impacto foi solicitada.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="t-alertas">
+    <h2 id="t-alertas">Alertas recentes</h2>
+    {% if alertas %}
+    <div class="tabela-rolavel" tabindex="0" role="region" aria-label="Tabela de alertas de segurança">
+    <table class="tabela">
+      <thead><tr><th scope="col">Quando</th><th scope="col">Gravidade</th><th scope="col">Regra</th><th scope="col">O que aconteceu</th><th scope="col">Origem</th><th scope="col">MITRE ATT&amp;CK</th><th scope="col">Resposta automática</th></tr></thead>
+      <tbody>
+      {% for a in alertas %}
+        <tr><td>{{ a.quando }}</td><td><span class="selo {{ a.classe }}">{{ a.rotulo }}</span></td><td>{{ a.regra }}</td>
+            <td><strong>{{ a.titulo }}</strong><br><span class="aviso-meta">{{ a.detalhe }}</span></td>
+            <td><code>{{ a.origem }}</code></td><td><code>{{ a.tecnica }}</code></td><td>{{ a.resposta or '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="vazio">Nenhum alerta de segurança até agora.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="t-quarentena">
+    <h2 id="t-quarentena">Origens em quarentena</h2>
+    {% if quarentena %}
+    <div class="tabela-rolavel" tabindex="0" role="region" aria-label="Tabela de quarentena">
+    <table class="tabela">
+      <thead><tr><th scope="col">Origem</th><th scope="col">Desde</th><th scope="col">Regra</th><th scope="col">Motivo</th></tr></thead>
+      <tbody>
+      {% for q in quarentena %}
+        <tr><td><code>{{ q.origem }}</code></td><td>{{ q.desde }}</td><td>{{ q.regra }}</td><td>{{ q.motivo }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="vazio">Nenhuma origem em quarentena.</p>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -27,6 +27,19 @@ SQL_COMANDOS = """
 SQL_AUDITORIA = """
     SELECT ts, usuario, perfil, acao, resultado, detalhe, origem
       FROM auditoria ORDER BY ts DESC LIMIT %(limite)s"""
+SQL_ALERTAS_SEG = """
+    SELECT ts, regra, severidade, titulo, detalhe, origem, tecnica, resposta
+      FROM alertas_seg ORDER BY ts DESC, id DESC LIMIT %(limite)s"""
+SQL_ACOES_SEG = """
+    SELECT id, criada_em, acao, alvo, motivo, severidade, status, decidida_em, decidida_por
+      FROM acoes_seg ORDER BY (status = 'pendente') DESC, criada_em DESC LIMIT %(limite)s"""
+SQL_QUARENTENA = "SELECT origem, desde, regra, motivo FROM quarentena ORDER BY desde DESC"
+# Só decide o que ainda está pendente: uma ação já aprovada ou recusada não muda mais.
+SQL_DECIDIR_ACAO = """
+    UPDATE acoes_seg
+       SET status = %(status)s, decidida_em = now(), decidida_por = %(usuario)s
+     WHERE id = %(id)s AND status = 'pendente'
+ RETURNING acao, alvo"""
 SQL_USUARIO = """
     SELECT usuario, nome, perfil, senha_hash, totp_segredo, totp_ativo, totp_ultimo_passo,
            falhas, bloqueado_ate, ativo
@@ -77,6 +90,23 @@ class Banco:
         with self._cursor() as cur:
             cur.execute(SQL_AUDITORIA, {"limite": limite})
             return cur.fetchall()
+
+    # ---------------------------------------------------------------- SIEM
+    def seguranca(self, limite: int = 40):
+        with self._cursor() as cur:
+            cur.execute(SQL_ALERTAS_SEG, {"limite": limite})
+            alertas = cur.fetchall()
+            cur.execute(SQL_ACOES_SEG, {"limite": limite})
+            acoes = cur.fetchall()
+            cur.execute(SQL_QUARENTENA)
+            quarentena = cur.fetchall()
+        return alertas, acoes, quarentena
+
+    def decidir_acao(self, acao_id: int, status: str, usuario: str):
+        """Devolve (acao, alvo) se decidiu agora, ou None se não estava mais pendente."""
+        with self._cursor() as cur:
+            cur.execute(SQL_DECIDIR_ACAO, {"id": acao_id, "status": status, "usuario": usuario})
+            return cur.fetchone()
 
     # ------------------------------------------------------- contas e sessão
     def usuario(self, usuario: str) -> dict | None:

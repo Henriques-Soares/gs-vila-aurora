@@ -30,6 +30,7 @@
     <nav class="largura menu" aria-label="Páginas do painel">
       <a href="{{ url_for('inicio') }}" {% if request.endpoint == 'inicio' %}aria-current="page"{% endif %}>Visão geral</a>
       {% if 'ver_comandos' in pode %}<a href="{{ url_for('comandos') }}" {% if request.endpoint == 'comandos' %}aria-current="page"{% endif %}>Comandos</a>{% endif %}
+      {% if 'ver_seguranca' in pode %}<a href="{{ url_for('seguranca') }}" {% if request.endpoint == 'seguranca' %}aria-current="page"{% endif %}>Segurança</a>{% endif %}
       {% if 'ver_auditoria' in pode %}<a href="{{ url_for('auditoria') }}" {% if request.endpoint == 'auditoria' %}aria-current="page"{% endif %}>Auditoria</a>{% endif %}
       <a href="{{ url_for('conta') }}" {% if request.endpoint == 'conta' %}aria-current="page"{% endif %}>Minha conta</a>
     </nav>

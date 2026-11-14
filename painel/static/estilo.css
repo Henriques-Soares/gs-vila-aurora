@@ -149,3 +149,11 @@ footer { padding: .5rem 0 2rem; color: var(--suave); font-size: .9rem; text-alig
   .quem { text-align: left; }
   .caixa-acesso { padding: 1.4rem; }
 }
+
+/* ---------- segurança ---------- */
+.resumo-claro { margin-top: 1.25rem; }
+.faixa-ok { margin: 1rem 0; padding: .9rem 1rem; background: var(--ok-fundo); border-left: .4rem solid var(--ok);
+            border-radius: .5rem; font-weight: 600; }
+.decisao { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.cn { font-weight: 400; color: var(--suave); font-size: .9rem; }
+.tabela .selo { min-width: 0; }

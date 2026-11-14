@@ -19,6 +19,7 @@ class BancoFalso:
     def __init__(self):
         self.usuarios = {}
         self.trilha = []
+        self.acoes = [{"id": 7, "alvo": "escola-bomba", "status": "pendente"}]
         for nome, perfil in (("operador.demo", "operador"), ("tecnico.demo", "tecnico"),
                              ("coordenacao.demo", "coordenacao"), ("auditor.demo", "auditor")):
             self.usuarios[nome] = {
@@ -53,6 +54,21 @@ class BancoFalso:
 
     def auditoria(self, limite=100):
         return []
+
+    def seguranca(self, limite=40):
+        agora = datetime.now(timezone.utc)
+        alertas = [(agora, "D-comando-suspeito", "critica", "Comando de atuador fora do perfil esperado",
+                    "detalhe", "agente-escola", "T0831 / T0836 (ICS)", None)]
+        acoes = [(a["id"], agora, "colocar_atuador_em_modo_seguro", a["alvo"], "motivo", "critica",
+                  a["status"], a.get("decidida_em"), a.get("decidida_por")) for a in self.acoes]
+        return alertas, acoes, [("10.8.0.77", agora, "A-acesso-nao-autorizado", "5 tentativas")]
+
+    def decidir_acao(self, acao_id, status, usuario):
+        for a in self.acoes:
+            if a["id"] == acao_id and a["status"] == "pendente":
+                a.update(status=status, decidida_por=usuario, decidida_em=datetime.now(timezone.utc))
+                return ("colocar_atuador_em_modo_seguro", a["alvo"])
+        return None
 
 
 class TestePainel(unittest.TestCase):
@@ -167,6 +183,46 @@ class TestePainel(unittest.TestCase):
 
     def test_entrada_comum_passa(self):
         self.assertEqual(self.c.get("/entrar?auto=1").status_code, 200)
+
+    def test_seguranca_por_perfil(self):
+        esperado = {"operador.demo": 403, "tecnico.demo": 200, "coordenacao.demo": 200, "auditor.demo": 200}
+        for usuario, codigo in esperado.items():
+            self.setUp()
+            self.entrar(usuario)
+            self.assertEqual(self.c.get("/seguranca").status_code, codigo, usuario)
+
+    def test_so_coordenacao_ve_botoes_e_decide(self):
+        for usuario in ("tecnico.demo", "auditor.demo"):
+            self.setUp()
+            self.entrar(usuario)
+            html = self.c.get("/seguranca").get_data(as_text=True)
+            self.assertNotIn('value="aprovar"', html, usuario)
+            self.assertIn("Somente a coordenação", html, usuario)
+            r = self.c.post("/seguranca/acoes/7", data={"decisao": "aprovar", "csrf": self.csrf("/seguranca")})
+            self.assertEqual(r.status_code, 403, usuario)
+            self.assertEqual(painel.banco.acoes[0]["status"], "pendente", usuario)
+
+    def test_coordenacao_aprova_uma_vez_e_fica_auditado(self):
+        self.entrar("coordenacao.demo")
+        html = self.c.get("/seguranca").get_data(as_text=True)
+        self.assertIn('value="aprovar"', html)
+        r = self.c.post("/seguranca/acoes/7", data={"decisao": "aprovar", "csrf": self.csrf("/seguranca")})
+        self.assertEqual(r.headers["Location"], "/seguranca?aviso=aprovada")
+        self.assertEqual(painel.banco.acoes[0]["status"], "aprovada")
+        self.assertEqual(painel.banco.acoes[0]["decidida_por"], "coordenacao.demo")
+        self.assertIn(("coordenacao.demo", "coordenacao", "acao_seg_decidida", "aprovada"), painel.banco.trilha)
+        # segunda decisão sobre a mesma ação não muda nada
+        r = self.c.post("/seguranca/acoes/7", data={"decisao": "recusar", "csrf": self.csrf("/seguranca")})
+        self.assertEqual(r.headers["Location"], "/seguranca?aviso=ja-decidida")
+        self.assertEqual(painel.banco.acoes[0]["status"], "aprovada")
+
+    def test_decisao_invalida_ou_sem_csrf(self):
+        self.entrar("coordenacao.demo")
+        r = self.c.post("/seguranca/acoes/7", data={"decisao": "apagar", "csrf": self.csrf("/seguranca")})
+        self.assertEqual(r.status_code, 400)
+        r = self.c.post("/seguranca/acoes/7", data={"decisao": "aprovar"})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(painel.banco.acoes[0]["status"], "pendente")
 
     def test_cabecalhos_e_cookie(self):
         r = self.c.get("/entrar")
