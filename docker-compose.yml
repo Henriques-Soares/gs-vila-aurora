@@ -48,6 +48,20 @@ services:
     volumes: ["./:/repo"]
     entrypoint: ["bash", "/repo/pki/pki.sh"]
 
+  ia:                     # IA defensiva (RT-16/17): anomalia.py | guardrioes_demo.py | anomalia.py --banco
+    profiles: ["ferramentas"]
+    build: ./ia
+    image: vila-aurora/ia
+    env_file:
+      - path: ./segredos/painel.env
+        required: false
+    networks: [nuvem]
+    entrypoint: ["python"]
+    command: ["anomalia.py"]
+    depends_on:
+      nuvem-db:
+        condition: service_healthy
+
   admin:                  # contas do painel: migrar | semear | listar | criar | redefinir
     profiles: ["ferramentas"]
     build: ./painel

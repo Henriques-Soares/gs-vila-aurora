@@ -144,6 +144,24 @@ seja uma regra local da borda. Para validar todo o SQL do SIEM contra um Postgre
 projeto foi testado com o mesmo texto SQL do código (leitura incremental por cursor
 `(recebido_em, id)`, já que o `id` dos comandos é UUID).
 
+## IA defensiva e proteção do LLM (RT-16, 17)
+
+**Detecção de anomalias (RT-16).** Um Isolation Forest (`ia/anomalia.py`) aprende o comportamento
+normal dos sensores e sinaliza leituras atípicas (câmara fria esquentando, reservatório esvaziando,
+alagamento). O desempenho é medido contra um conjunto rotulado — precisão, revocação e taxa de
+falsos positivos.
+
+**Proteção do assistente (RT-17).** Um assistente de triagem resume alertas em linguagem simples.
+Ele não tem ferramentas nem acesso a atuadores (defesa contra agência excessiva), e `ia/guardrioes.py`
+valida a entrada (injeção direta e indireta) e a saída (redação de segredos), com os riscos mapeados
+no OWASP Top 10 para LLM e no MITRE ATLAS.
+
+```bash
+docker compose run --rm ia                                    # métricas do detector de anomalias
+docker compose run --rm ia guardrioes_demo.py                 # guardrioes contra tentativas de abuso
+docker compose run --rm -e PAINEL_DB_SENHA=... ia anomalia.py --banco   # pontua a telemetria real
+```
+
 ## Testes automatizados
 
 Rodam sem Docker (Python 3.11+, bash e OpenSSL): regras locais, mTLS e revogação na ingestão,
@@ -179,6 +197,7 @@ edge/     broker Mosquitto (mTLS + ACL) e agente de borda (regras + buffer)
 vpn/      túnel WireGuard (concentrador da nuvem e nós de borda)
 cloud/    ingestão (mTLS) e esquema do banco
 siem/     coleta de logs, regras de detecção e resposta
+ia/       detecção de anomalias (Isolation Forest) e guardrioes do LLM
 painel/   painel de supervisão
 tests/    testes automatizados
 ```
