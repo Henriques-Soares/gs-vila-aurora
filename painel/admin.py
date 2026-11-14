@@ -45,8 +45,15 @@ def nova_senha() -> str:
 
 
 def migrar(cur) -> None:
-    cur.execute(Path(os.environ.get("MIGRACAO", "/db/03-painel.sql")).read_text(encoding="utf-8"))
-    print("Banco atualizado: tabelas de contas e auditoria prontas; papel do painel = painel_app.")
+    base = Path(os.environ.get("MIGRACOES", "/db"))
+    for arquivo in ("03-painel.sql", "04-siem.sql"):
+        cur.execute((base / arquivo).read_text(encoding="utf-8"))
+    senha_siem = os.environ.get("SIEM_DB_SENHA")
+    if senha_siem:
+        from psycopg2 import sql  # ALTER ROLE não aceita parâmetro ligado; o literal é escapado com segurança
+        cur.execute(sql.SQL("ALTER ROLE siem_rw PASSWORD {}").format(sql.Literal(senha_siem)))
+    print("Banco atualizado: contas, auditoria e tabelas do SIEM prontas; "
+          "papéis painel_app e siem_rw configurados.")
 
 
 def gravar(cur, usuario: str, perfil: str, nome: str) -> str:

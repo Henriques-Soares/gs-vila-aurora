@@ -333,6 +333,7 @@ services:
     network_mode: "service:nuvem-vpn"   # mesma pilha de rede do concentrador
     environment:
       ESCUTA: 10.8.0.1                  # escuta somente no endereço do túnel
+      SIEM_ADDR: siem:5514
     env_file:
       - path: ./segredos/ingest.env
         required: false
@@ -345,6 +346,19 @@ services:
       nuvem-db:
         condition: service_healthy
 
+  # ---------------------------------------------------------------- SIEM
+  siem:
+    build: ./siem
+    image: vila-aurora/siem
+    restart: unless-stopped
+    env_file:
+      - path: ./segredos/siem.env
+        required: false
+    networks: [nuvem]          # recebe eventos da nuvem; não abre caminho novo entre segmentos
+    depends_on:
+      nuvem-db:
+        condition: service_healthy
+
   # ---------------------------------------------------------------- supervisão
   painel:
     build: ./painel
@@ -352,6 +366,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: "<-03>3"   # horário de Brasília na exibição
+      SIEM_ADDR: siem:5514
     env_file:
       - path: ./segredos/painel.env
         required: false

@@ -7,6 +7,7 @@ Segurança de acesso (RT-09):
     trilha de auditoria de logins e acessos negados.
 """
 import hmac
+import json
 import os
 import re
 import secrets
@@ -82,6 +83,70 @@ def bd() -> Banco:
 # --------------------------------------------------------------------- utilidades
 def origem() -> str:
     return (request.remote_addr or "?")[:45]
+
+import socket as _socket
+
+_SIEM_ADDR = os.environ.get("SIEM_ADDR")
+
+
+def _emitir_seguranca(registro: dict) -> None:
+    if not _SIEM_ADDR:
+        return
+    try:
+        host, porta = _SIEM_ADDR.split(":")
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM) as s:
+            s.sendto(json.dumps(registro, ensure_ascii=False).encode("utf-8"), (host, int(porta)))
+    except Exception:
+        pass   # o SIEM é observabilidade; indisponível, não afeta a operação
+
+
+# Detector de entrada maliciosa (WAF-like) — assinaturas defensivas de SQL Injection e XSS.
+# Apenas DETECTA e RECUSA; as consultas do painel já são parametrizadas. Alimenta a regra B do SIEM.
+import re as _re
+
+_ASSINATURAS = [
+    ("sql-union", _re.compile(r"union\s+select", _re.I)),
+    ("sql-tautologia", _re.compile(r"""(\bor\b|\band\b)\s+['"]?\w+['"]?\s*=\s*['"]?\w+['"]?""", _re.I)),
+    ("sql-comentario", _re.compile(r"(--|#|/\*)\s*$")),
+    ("sql-empilhado", _re.compile(r";\s*(drop|delete|update|insert|alter)\b", _re.I)),
+    ("xss-script", _re.compile(r"<\s*script", _re.I)),
+]
+
+
+# A senha nunca vai para SQL (é comparada com o hash) e pode ter qualquer caractere;
+# o token CSRF é aleatório. Inspecioná-los só geraria falso positivo.
+_CAMPOS_FORA_DO_DETECTOR = {"csrf", "senha"}
+
+
+def _assinatura_suspeita(valor: str):
+    if not isinstance(valor, str) or len(valor) > 2000:
+        return None
+    for nome, padrao in _ASSINATURAS:
+        if padrao.search(valor):
+            return nome
+    return None
+
+
+@app.before_request
+def detector_entrada():
+    """Inspeciona os valores recebidos; se baterem numa assinatura, registra, avisa o SIEM e recusa."""
+    for campo, valor in list(request.args.items()) + list(request.form.items()):
+        if campo in _CAMPOS_FORA_DO_DETECTOR:
+            continue
+        assinatura = _assinatura_suspeita(valor)
+        if assinatura:
+            conta = session.get("conta") or {}
+            registro = {"ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                        "fonte": "painel", "nivel": "aviso", "evento": "entrada_suspeita", "origem": origem(),
+                        "dados": {"campo": campo, "assinatura": assinatura, "rota": request.path,
+                                  "usuario": conta.get("usuario")}}
+            app.logger.warning("entrada_suspeita: %s em %s", assinatura, campo)
+            _emitir_seguranca(registro)
+            try:
+                auditar("entrada_suspeita", "recusado", f"{assinatura} em {campo}")
+            except Exception:
+                pass
+            abort(400)
 
 
 def auditar(acao: str, resultado: str, detalhe: str | None = None, usuario=None, perfil=None) -> None:

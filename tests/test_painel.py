@@ -152,6 +152,22 @@ class TestePainel(unittest.TestCase):
         r = self.c.post("/entrar", data={"usuario": "operador.demo", "senha": SENHA})
         self.assertEqual(r.status_code, 400)
 
+    def test_detector_recusa_assinatura_e_audita(self):
+        painel.banco.trilha.clear()
+        r = self.c.get("/entrar?q=" + "a%20UNION%20SELECT%20b")
+        self.assertEqual(r.status_code, 400)
+        self.assertTrue(any(t[2] == "entrada_suspeita" for t in painel.banco.trilha))
+
+    def test_senha_com_caracteres_especiais_nao_e_bloqueada(self):
+        for nome in ("operador.demo",):
+            painel.banco.usuarios[nome]["senha_hash"] = generate_password_hash("abc' or 1=1 --")
+        r = self.c.post("/entrar", data={"usuario": "operador.demo", "senha": "abc' or 1=1 --",
+                                         "csrf": self.csrf("/entrar")})
+        self.assertEqual(r.status_code, 302)          # entrou na etapa do 2º fator, não foi recusado
+
+    def test_entrada_comum_passa(self):
+        self.assertEqual(self.c.get("/entrar?auto=1").status_code, 200)
+
     def test_cabecalhos_e_cookie(self):
         r = self.c.get("/entrar")
         self.assertIn("default-src 'self'", r.headers["Content-Security-Policy"])

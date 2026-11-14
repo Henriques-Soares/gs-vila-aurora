@@ -33,11 +33,37 @@ SQL = {
 }
 
 
+
+import socket as _socket
+
+_SIEM_ADDR = os.environ.get("SIEM_ADDR")
+
+
+def _emitir_seguranca(registro: dict) -> None:
+    if not _SIEM_ADDR:
+        return
+    try:
+        host, porta = _SIEM_ADDR.split(":")
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM) as s:
+            s.sendto(json.dumps(registro, ensure_ascii=False).encode("utf-8"), (host, int(porta)))
+    except Exception:
+        pass   # o SIEM é observabilidade; indisponível, não afeta a operação
+
+
+# Eventos que interessam ao SIEM (tentativas de acesso sem credencial válida)
+_EVENTOS_SEGURANCA = {"conexao_tls_recusada", "identidade_nao_autorizada"}
+
+
 def log(evento: str, nivel: str = "info", **campos) -> None:
-    print(json.dumps({
+    registro = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "nivel": nivel, "componente": "nuvem-ingest", "evento": evento, **campos,
-    }, ensure_ascii=False), flush=True)
+    }
+    print(json.dumps(registro, ensure_ascii=False), flush=True)
+    if evento in _EVENTOS_SEGURANCA:
+        _emitir_seguranca({"ts": registro["ts"], "fonte": "nuvem-ingest", "nivel": nivel,
+                           "evento": evento, "origem": campos.get("origem"),
+                           "dados": {k: v for k, v in campos.items() if k != "origem"}})
 
 
 class ArmazenamentoPostgres:

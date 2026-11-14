@@ -22,6 +22,7 @@ Quatro camadas, com um nó de borda autônomo por espaço comunitário
 | Borda | `borda-<espaco>-broker`, `borda-<espaco>-agente`, `borda-<espaco>-vpn` | Broker MQTT só com mTLS, regras locais, buffer store-and-forward, ponta do túnel WireGuard |
 | Nuvem | `nuvem-vpn`, `nuvem-ingest`, `nuvem-db` | Concentrador WireGuard, ingestão HTTPS com mTLS + CRL (só dentro do túnel), PostgreSQL com privilégio mínimo |
 | Supervisão | `painel` | Painel web acessível, com login em duas etapas (senha + TOTP) e perfis de acesso |
+| Segurança | `siem` | Centraliza os logs de segurança, detecta (4 regras) e responde: contém sozinho o de baixo risco e encaminha o de alto impacto para aprovação humana |
 
 Segmentos de rede: `campo-<espaco>` (isolado por espaço), `wan` (enlace não confiável, onde só trafega
 WireGuard), túnel `10.8.0.0/24` (a ingestão só escuta em `10.8.0.1`), `nuvem` (interno) e `operadores`
@@ -43,6 +44,7 @@ docker compose up -d --build
 docker compose ps
 
 # 3) Contas fictícias do painel (as senhas iniciais aparecem uma única vez)
+docker compose run --rm admin migrar      # tabelas de contas, auditoria e SIEM
 docker compose run --rm admin semear
 ```
 
@@ -71,6 +73,10 @@ docker compose exec nuvem-vpn wg show
 # Segmentação: só o caminho necessário está aberto (RT-07)
 docker compose exec borda-ubs-agente python verificar_rede.py
 docker compose exec campo-ubs python verificar_rede.py
+
+# SIEM: dispara as regras de detecção e mostra os alertas (RT-13)
+docker compose exec siem python simular.py tudo
+docker compose logs --since 2m siem        # alertas, respostas automáticas e ações pendentes
 
 # Certificados emitidos e estado (válido/revogado)
 docker compose run --rm pki listar
@@ -102,6 +108,36 @@ docker compose logs -f borda-ubs-agente                                 # segue 
 docker network connect vila-aurora_wan vila-aurora-borda-ubs-vpn-1      # link volta: reconciliação
 ```
 
+## SIEM: detecção e resposta (RT-12, 13, 15)
+
+O serviço `siem` centraliza os eventos de segurança (relógios já sincronizados, pois todos os
+containers compartilham o relógio do host — mantido por NTP), guarda-os com retenção e aplica
+quatro regras de detecção, cada uma ligada a uma falha do incidente INC-VA-0712:
+
+| Regra | O que detecta | Origem | MITRE ATT&CK |
+|---|---|---|---|
+| A | Acesso não autorizado repetido na nuvem | ingestão (mTLS) | T1110 / T1133 |
+| B | Assinatura de SQL Injection no painel | painel (WAF) | T1190 |
+| C | Dispositivo/credencial sem certificado válido | ingestão (mTLS) | T1190 / T1078 |
+| D | Comando de atuador fora do perfil esperado | comandos centralizados | T0831 / T0836 (ICS) |
+
+**Resposta (RT-15).** O de baixo risco é automático: a origem ofensora entra em quarentena e o
+alerta é registrado. O de alto impacto — mexer num atuador, revogar um certificado — o SIEM
+**nunca** executa sozinho: cria uma ação pendente que só a **coordenação** aprova no painel.
+
+Para demonstrar as regras A, B e C sem nenhum ataque real, há um harness de teste controlado que
+injeta eventos representativos na coleta:
+
+```bash
+docker compose exec siem python simular.py tudo
+docker compose logs --since 2m siem
+```
+
+A regra D também dispara a partir de um comando de atuador real, lido do banco, cuja origem não
+seja uma regra local da borda. Para validar todo o SQL do SIEM contra um PostgreSQL 16 real, o
+projeto foi testado com o mesmo texto SQL do código (leitura incremental por cursor
+`(recebido_em, id)`, já que o `id` dos comandos é UUID).
+
 ## Testes automatizados
 
 Rodam sem Docker (Python 3.11+, bash e OpenSSL): regras locais, mTLS e revogação na ingestão,
@@ -123,7 +159,10 @@ python -m unittest discover -s tests -v
 - **Menor privilégio:** ACL por dispositivo no broker; `ingest_rw` só insere; `painel_app` lê a telemetria,
   atualiza apenas campos de sessão/MFA e só acrescenta linhas na auditoria (contas são geridas fora do painel);
   serviços rodam sem root; apenas o painel publica porta, e só em `127.0.0.1`.
-- **Entrada validada no servidor** e consultas sempre parametrizadas.
+- **Entrada validada no servidor** e consultas sempre parametrizadas; um detector de assinaturas
+  (WAF) recusa entradas maliciosas e avisa o SIEM.
+- **SIEM com privilégio mínimo:** o papel `siem_rw` só grava eventos/alertas e lê os comandos;
+  não altera a operação. A contenção automática fica restrita a ações de baixo risco.
 
 ## Estrutura
 
@@ -133,6 +172,7 @@ field/    simulador dos dispositivos de campo e cenários de falha
 edge/     broker Mosquitto (mTLS + ACL) e agente de borda (regras + buffer)
 vpn/      túnel WireGuard (concentrador da nuvem e nós de borda)
 cloud/    ingestão (mTLS) e esquema do banco
+siem/     coleta de logs, regras de detecção e resposta
 painel/   painel de supervisão
 tests/    testes automatizados
 ```
